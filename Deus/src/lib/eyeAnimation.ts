@@ -183,7 +183,7 @@ export type ChromeShellLayout = {
   highlightZ: number;
 };
 
-/** Front-facing chrome geometry, with a clear annular gap around the iris. */
+/** Front-facing chrome geometry; the inner edge intentionally overlaps the iris to leave no black seam. */
 export function getChromeShellLayout(): ChromeShellLayout {
   return {
     irisRadius: 0.78,
