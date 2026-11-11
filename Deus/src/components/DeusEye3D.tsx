@@ -81,7 +81,7 @@ function makeOrganicRing(radius: number, tube: number, color: string, opacity = 
   }
   geometry.computeVertexNormals();
   return new THREE.Mesh(geometry, new THREE.MeshPhysicalMaterial({
-    color, metalness: 0.78, roughness: 0.12, clearcoat: 1, clearcoatRoughness: 0.035,
+    color, metalness: 0.46, roughness: 0.095, clearcoat: 1, clearcoatRoughness: 0.02,
     transparent: opacity < 1, opacity
   }));
 }
@@ -136,17 +136,17 @@ export default function DeusEye3D({ mode, onLook }: Props) {
 
     // The reference is a floating eye: no solid eyeball, no oversized HUD.
     // The silver shell is intentionally irregular, like liquid chrome frozen mid-splash.
-    const outerShell = makeOrganicRing(1.34, 0.17, '#E4F1F2');
+    const outerShell = makeOrganicRing(1.32, 0.105, '#F3FFFF');
     outerShell.position.z = 0.02;
     root.add(outerShell);
     const outerShellBase = new Float32Array((outerShell.geometry.attributes.position as THREE.BufferAttribute).array as Float32Array);
 
-    const shellHighlight = makeOrganicRing(1.26, 0.045, '#F8FFFF', 0.92);
+    const shellHighlight = makeOrganicRing(1.27, 0.032, '#FFFFFF', 1);
     shellHighlight.position.z = 0.14;
     root.add(shellHighlight);
     const shellHighlightBase = new Float32Array((shellHighlight.geometry.attributes.position as THREE.BufferAttribute).array as Float32Array);
 
-    const innerMetal = makeOrganicRing(1.01, 0.055, '#A7C9CF', 0.96);
+    const innerMetal = makeOrganicRing(0.98, 0.042, '#C7E6E8', 1);
     innerMetal.position.z = 0.76;
     root.add(innerMetal);
 
@@ -174,7 +174,7 @@ export default function DeusEye3D({ mode, onLook }: Props) {
 
     const irisUniforms = { uTime: { value: 0 }, uGlow: { value: 0.58 } };
     const iris = new THREE.Mesh(
-      new THREE.CircleGeometry(0.86, 160),
+      new THREE.CircleGeometry(0.78, 160),
       new THREE.ShaderMaterial({
         vertexShader: irisShader.vertexShader,
         fragmentShader: irisShader.fragmentShader,
@@ -186,14 +186,14 @@ export default function DeusEye3D({ mode, onLook }: Props) {
     root.add(iris);
 
     const irisRim = new THREE.Mesh(
-      new THREE.TorusGeometry(0.875, 0.045, 20, 160),
+      new THREE.TorusGeometry(0.795, 0.035, 20, 160),
       new THREE.MeshPhysicalMaterial({ color: '#9AC6CB', metalness: 0.9, roughness: 0.13, clearcoat: 1 })
     );
     irisRim.position.z = 0.965;
     root.add(irisRim);
 
     const pupil = new THREE.Mesh(
-      new THREE.SphereGeometry(0.31, 64, 48),
+      new THREE.SphereGeometry(0.29, 64, 48),
       new THREE.MeshPhysicalMaterial({ color: '#010207', roughness: 0.035, metalness: 0.12, clearcoat: 1, clearcoatRoughness: 0.015 })
     );
     pupil.position.set(0, 0, 1.06);
@@ -201,15 +201,15 @@ export default function DeusEye3D({ mode, onLook }: Props) {
     root.add(pupil);
 
     const pupilRing = new THREE.Mesh(
-      new THREE.TorusGeometry(0.34, 0.015, 12, 96),
+      new THREE.TorusGeometry(0.315, 0.014, 12, 96),
       new THREE.MeshStandardMaterial({ color: '#D8F6F4', metalness: 0.94, roughness: 0.12 })
     );
     pupilRing.position.z = 1.09;
     root.add(pupilRing);
 
     const lights = [
-      new THREE.PointLight('#D7FAFF', 3.8, 16),
-      new THREE.PointLight('#238FC0', 2.7, 13),
+      new THREE.PointLight('#F1FFFF', 6.2, 18),
+      new THREE.PointLight('#238FC0', 3.2, 13),
       new THREE.PointLight('#D5B36B', 1.45, 10),
       new THREE.PointLight('#78E8D9', 1.0, 8)
     ];
@@ -218,7 +218,7 @@ export default function DeusEye3D({ mode, onLook }: Props) {
     lights[2].position.set(-0.2, 2.3, -1.5);
     lights[3].position.set(2.5, 1.5, 2.5);
     lights.forEach(light => scene.add(light));
-    scene.add(new THREE.AmbientLight('#9CC9D1', 1.05));
+    scene.add(new THREE.AmbientLight('#C5E5E8', 1.3));
 
     const particles = new THREE.Group();
     scene.add(particles);
