@@ -4,7 +4,7 @@ import { GLView } from 'expo-gl';
 import type { ExpoWebGLRenderingContext } from 'expo-gl';
 import * as THREE from 'three';
 import type { EyeMode } from '../lib/eyeState';
-import { getEyeMotion } from '../lib/eyeAnimation';
+import { getEyeMotion, getLiquidShellMotion } from '../lib/eyeAnimation';
 
 type Props = { mode: EyeMode; onLook?: (x: number, y: number) => void };
 
@@ -73,10 +73,11 @@ function makeOrganicRing(radius: number, tube: number, color: string, opacity = 
     const y = positions.getY(i);
     const z = positions.getZ(i);
     const angle = Math.atan2(y, x);
-    const wave = Math.sin(angle * 2.0 + 0.35) * 0.075 + Math.sin(angle * 3.0 - 0.8) * 0.035;
-    const fineWave = Math.sin(angle * 5.0 + 1.2) * 0.014;
+    const wave = Math.sin(angle * 2.0 + 0.35) * 0.105 + Math.sin(angle * 3.0 - 0.8) * 0.075;
+    const fineWave = Math.sin(angle * 5.0 + 1.2) * 0.035 + Math.sin(angle * 9.0) * 0.018;
     const scale = 1.0 + wave + fineWave;
-    positions.setXYZ(i, x * scale, y * scale, z + Math.sin(angle * 2.0) * 0.035);
+    const splash = Math.pow(Math.max(0, Math.sin(angle * 5.0 + 0.7)), 8.0) * 0.11;
+    positions.setXYZ(i, x * (scale + splash), y * (scale + splash), z + Math.sin(angle * 2.0) * 0.07 + splash * 0.6);
   }
   geometry.computeVertexNormals();
   return new THREE.Mesh(geometry, new THREE.MeshPhysicalMaterial({
@@ -119,79 +120,54 @@ export default function DeusEye3D({ mode, onLook }: Props) {
 
   const onContextCreate = useCallback((gl: ExpoWebGLRenderingContext) => {
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color('#020509');
+    scene.background = new THREE.Color('#000000');
     const camera = new THREE.PerspectiveCamera(34, gl.drawingBufferWidth / gl.drawingBufferHeight, 0.1, 100);
-    camera.position.z = 7.35;
+    camera.position.z = 7.05;
     const renderer = new THREE.WebGLRenderer({ context: gl as any, antialias: true, alpha: false });
     renderer.setSize(gl.drawingBufferWidth, gl.drawingBufferHeight, false);
-    renderer.setClearColor('#020509', 1);
+    renderer.setClearColor('#000000', 1);
     const root = new THREE.Group();
     scene.add(root);
 
-    // Soft, organic eyeball volume with a cool porcelain-metal finish.
-    const eye = new THREE.Mesh(
-      new THREE.SphereGeometry(1.78, 96, 64),
-      new THREE.MeshPhysicalMaterial({ color: '#D4E8E9', roughness: 0.17, metalness: 0.28, clearcoat: 1, clearcoatRoughness: 0.045 })
-    );
-    eye.scale.set(1.58, 0.94, 0.62);
-    root.add(eye);
-
-    // Layered, asymmetrical liquid-metal shell around the eye.
-    const outerShell = makeOrganicRing(1.78, 0.19, '#B8D0D3');
-    outerShell.scale.set(1.58, 0.94, 0.56);
-    outerShell.position.set(0, 0, 0.04);
+    // The reference is a floating eye: no solid eyeball, no oversized HUD.
+    // The silver shell is intentionally irregular, like liquid chrome frozen mid-splash.
+    const outerShell = makeOrganicRing(1.27, 0.17, '#C9DDE0');
+    outerShell.position.z = 0.02;
     root.add(outerShell);
-    const shellHighlight = makeOrganicRing(1.62, 0.055, '#F0FFFF', 0.82);
-    shellHighlight.scale.set(1.62, 0.96, 0.48);
-    shellHighlight.position.set(0, 0.015, 0.16);
+
+    const shellHighlight = makeOrganicRing(1.19, 0.045, '#F4FFFF', 0.9);
+    shellHighlight.position.z = 0.14;
     root.add(shellHighlight);
-    const innerMetal = makeOrganicRing(1.04, 0.065, '#6F9DA8');
-    innerMetal.scale.set(1.03, 1.0, 0.62);
-    innerMetal.position.z = 0.89;
+
+    const innerMetal = makeOrganicRing(0.98, 0.055, '#7FAAB5', 0.96);
+    innerMetal.position.z = 0.76;
     root.add(innerMetal);
 
-    // A restrained holographic instrument ring gives the eye depth without
-    // obscuring the iris or turning the interface into a flat HUD.
-    const hologram = new THREE.Group();
-    hologram.position.z = -0.18;
-    hologram.scale.set(1.46, 0.88, 0.72);
-    root.add(hologram);
-    const orbitA = makeHoloArc(2.08, 0.014, Math.PI * 1.46, '#58E8F7', 0.54, -0.42);
-    const orbitB = makeHoloArc(2.22, 0.009, Math.PI * 0.72, '#D5B36B', 0.62, 1.16);
-    const orbitC = makeHoloArc(2.34, 0.012, Math.PI * 0.48, '#3C9FC1', 0.48, 3.32);
-    hologram.add(orbitA, orbitB, orbitC);
-
-    const tickPositions: number[] = [];
-    for (let i = 0; i < 72; i++) {
-      const angle = (i / 72) * Math.PI * 2;
-      const major = i % 6 === 0;
-      const innerRadius = major ? 2.17 : 2.205;
-      const outerRadius = 2.27;
-      tickPositions.push(
-        Math.cos(angle) * innerRadius, Math.sin(angle) * innerRadius, 0.015,
-        Math.cos(angle) * outerRadius, Math.sin(angle) * outerRadius, 0.015
+    // Detached chrome droplets recreate the splash fragments in the reference clip.
+    const droplets: THREE.Mesh[] = [];
+    const dropletSeeds: { angle: number; radius: number; speed: number; phase: number; size: number }[] = [];
+    for (let i = 0; i < 13; i++) {
+      const size = 0.018 + (i % 4) * 0.012;
+      const drop = new THREE.Mesh(
+        new THREE.SphereGeometry(size, 16, 12),
+        new THREE.MeshPhysicalMaterial({
+          color: i % 3 === 0 ? '#F2FFFF' : '#9EBFC5',
+          metalness: 0.96, roughness: 0.075, clearcoat: 1,
+          clearcoatRoughness: 0.025
+        })
       );
-    }
-    const tickGeometry = new THREE.BufferGeometry();
-    tickGeometry.setAttribute('position', new THREE.Float32BufferAttribute(tickPositions, 3));
-    const ticks = new THREE.LineSegments(tickGeometry, new THREE.LineBasicMaterial({
-      color: '#7CEBFA', transparent: true, opacity: 0.42, depthWrite: false
-    }));
-    hologram.add(ticks);
-
-    for (let i = 0; i < 6; i++) {
-      const angle = (i / 6) * Math.PI * 2 + 0.2;
-      const marker = new THREE.Mesh(
-        new THREE.SphereGeometry(0.026, 10, 10),
-        new THREE.MeshBasicMaterial({ color: i % 2 ? '#6DE7F3' : '#E4C47A' })
-      );
-      marker.position.set(Math.cos(angle) * 2.34, Math.sin(angle) * 2.34, 0.035);
-      hologram.add(marker);
+      const angle = (i / 13) * Math.PI * 2 + (i % 3) * 0.17;
+      const radius = 1.42 + (i % 4) * 0.12;
+      drop.position.set(Math.cos(angle) * radius, Math.sin(angle) * radius, 0.16 + (i % 3) * 0.08);
+      drop.scale.set(0.8, 1.35 + (i % 3) * 0.3, 0.8);
+      root.add(drop);
+      droplets.push(drop);
+      dropletSeeds.push({ angle, radius, speed: 0.16 + (i % 5) * 0.035, phase: i * 1.73, size });
     }
 
     const irisUniforms = { uTime: { value: 0 }, uGlow: { value: 0.58 } };
     const iris = new THREE.Mesh(
-      new THREE.CircleGeometry(0.96, 160),
+      new THREE.CircleGeometry(0.86, 160),
       new THREE.ShaderMaterial({
         vertexShader: irisShader.vertexShader,
         fragmentShader: irisShader.fragmentShader,
@@ -199,29 +175,29 @@ export default function DeusEye3D({ mode, onLook }: Props) {
         side: THREE.DoubleSide
       })
     );
-    iris.position.set(0, 0, 1.045);
+    iris.position.set(0, 0, 0.94);
     root.add(iris);
 
     const irisRim = new THREE.Mesh(
-      new THREE.TorusGeometry(0.975, 0.055, 20, 160),
+      new THREE.TorusGeometry(0.875, 0.045, 20, 160),
       new THREE.MeshPhysicalMaterial({ color: '#9AC6CB', metalness: 0.9, roughness: 0.13, clearcoat: 1 })
     );
-    irisRim.position.z = 1.065;
+    irisRim.position.z = 0.965;
     root.add(irisRim);
 
     const pupil = new THREE.Mesh(
-      new THREE.SphereGeometry(0.39, 64, 48),
+      new THREE.SphereGeometry(0.31, 64, 48),
       new THREE.MeshPhysicalMaterial({ color: '#010207', roughness: 0.035, metalness: 0.12, clearcoat: 1, clearcoatRoughness: 0.015 })
     );
-    pupil.position.set(0, 0, 1.19);
+    pupil.position.set(0, 0, 1.06);
     pupil.scale.set(1.04, 1.04, 0.28);
     root.add(pupil);
 
     const pupilRing = new THREE.Mesh(
-      new THREE.TorusGeometry(0.425, 0.018, 12, 96),
+      new THREE.TorusGeometry(0.34, 0.015, 12, 96),
       new THREE.MeshStandardMaterial({ color: '#D8F6F4', metalness: 0.94, roughness: 0.12 })
     );
-    pupilRing.position.z = 1.225;
+    pupilRing.position.z = 1.09;
     root.add(pupilRing);
 
     const lights = [
@@ -239,7 +215,7 @@ export default function DeusEye3D({ mode, onLook }: Props) {
 
     const particles = new THREE.Group();
     scene.add(particles);
-    for (let i = 0; i < 54; i++) {
+    for (let i = 0; i < 18; i++) {
       const radius = 0.012 + Math.random() * 0.028;
       const dot = new THREE.Mesh(
         new THREE.SphereGeometry(radius, 10, 10),
@@ -249,7 +225,7 @@ export default function DeusEye3D({ mode, onLook }: Props) {
           opacity: 0.22 + Math.random() * 0.5
         })
       );
-      dot.position.set((Math.random() - 0.5) * 6.5, (Math.random() - 0.5) * 4.8, (Math.random() - 0.5) * 2.4 - 0.55);
+      dot.position.set((Math.random() - 0.5) * 3.8, (Math.random() - 0.5) * 3.2, (Math.random() - 0.5) * 1.0 - 0.25);
       particles.add(dot);
     }
 
@@ -259,6 +235,7 @@ export default function DeusEye3D({ mode, onLook }: Props) {
       if (!running) return;
       frame += 0.012;
       const motion = getEyeMotion(modeRef.current, frame);
+      const liquid = getLiquidShellMotion(modeRef.current, frame);
       const targetX = look.current.x * 0.42 * motion.gazeSensitivity;
       const targetY = look.current.y * 0.30 * motion.gazeSensitivity;
       pupil.position.x += (targetX - pupil.position.x) * 0.105;
@@ -273,16 +250,20 @@ export default function DeusEye3D({ mode, onLook }: Props) {
       irisUniforms.uTime.value = frame * motion.scanSpeed;
       irisUniforms.uGlow.value = motion.glow;
       const breath = 1 + Math.sin(frame * 1.15) * 0.006;
-      root.scale.set(1.0 * breath, 1.0 * breath, 1.0);
+      root.scale.setScalar(0.82 * breath * liquid.shellPulse);
       root.rotation.y += ((look.current.x * 0.105 + Math.sin(frame * 0.31) * 0.024) - root.rotation.y) * 0.022;
       root.rotation.x += ((-look.current.y * 0.065 + Math.sin(frame * 0.43) * 0.016) - root.rotation.x) * 0.022;
-      outerShell.rotation.z = Math.sin(frame * 0.22) * 0.009;
-      shellHighlight.rotation.z = -Math.sin(frame * 0.18) * 0.012;
-      hologram.rotation.z = Math.sin(frame * 0.12 * motion.orbitSpeed) * 0.035 + frame * 0.0015 * motion.orbitSpeed;
-      orbitA.rotation.z = -0.42 + frame * 0.018 * motion.orbitSpeed;
-      orbitB.rotation.z = 1.16 - frame * 0.026 * motion.orbitSpeed;
-      orbitC.rotation.z = 3.32 + frame * 0.034 * motion.orbitSpeed;
-      particles.rotation.z = Math.sin(frame * 0.14) * 0.032;
+      outerShell.rotation.z = Math.sin(frame * 0.42) * 0.025;
+      shellHighlight.rotation.z = -Math.sin(frame * 0.31) * 0.032;
+      innerMetal.rotation.z = Math.sin(frame * 0.24) * 0.018;
+      droplets.forEach((drop, index) => {
+        const seed = dropletSeeds[index];
+        const angle = seed.angle + frame * seed.speed * liquid.dropletOrbit;
+        const radius = seed.radius + Math.sin(frame * 1.35 + seed.phase) * 0.055 * liquid.splashAmount;
+        drop.position.set(Math.cos(angle) * radius, Math.sin(angle) * radius, 0.12 + Math.sin(frame * 1.7 + seed.phase) * 0.12);
+        drop.rotation.z = angle + Math.PI / 2;
+      });
+      particles.rotation.z = Math.sin(frame * 0.14) * 0.025;
       renderer.render(scene, camera);
       gl.endFrameEXP();
       requestAnimationFrame(animate);
@@ -316,5 +297,5 @@ export default function DeusEye3D({ mode, onLook }: Props) {
 }
 
 const styles = StyleSheet.create({
-  wrap: { width: '100%', height: '100%', overflow: 'hidden', backgroundColor: '#020509' }
+  wrap: { width: '100%', height: '100%', overflow: 'hidden', backgroundColor: '#000000' }
 });
