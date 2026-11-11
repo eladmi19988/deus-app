@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "D.E.U.S.",
+    "slug": "deus",
+    "owner": "eladmi19988",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.eladmi19988.deus"
+    },
+    "android": {
+      "package": "com.eladmi19988.deus"
+    },
+    "plugins": [
+      "expo-secure-store"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "0fb803d8-5553-4472-9b81-e126f3795c76"
+      }
+    },
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}

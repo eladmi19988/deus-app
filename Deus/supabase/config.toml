@@ -1,0 +1,10 @@
+project_id = "mssbjtlkklbbicfbzpvm"
+
+[functions.deus-chat]
+verify_jwt = true
+
+[functions.deus-memory]
+verify_jwt = true
+
+[functions.deus-command]
+verify_jwt = true
