@@ -28,5 +28,9 @@
     "web": "expo start --web",
     "test": "node --experimental-strip-types --test src/lib/eyeAnimation.test.mjs api/_lib/chat-validation.test.cjs api/_lib/chat-proxy.test.cjs"
   },
-  "private": true
+  "private": true,
+  "overrides": {
+    "glob": "^14.0.2",
+    "minimatch": "^11.0.1"
+  }
 }
