@@ -142,25 +142,6 @@ function makeChromeShard() {
   }));
 }
 
-function makeChromeReflectionArc(angle: number, radius: number, length: number, z: number) {
-  const points: THREE.Vector3[] = [];
-  for (let step = 0; step <= 12; step++) {
-    const t = step / 12 - 0.5;
-    const a = angle + t * length;
-    const r = radius + Math.sin(t * Math.PI) * 0.018;
-    points.push(new THREE.Vector3(Math.cos(a) * r, Math.sin(a) * r, z + Math.cos(t * Math.PI * 2) * 0.018));
-  }
-  const curve = new THREE.CatmullRomCurve3(points);
-  const geometry = new THREE.TubeGeometry(curve, 32, 0.026, 10, false);
-  const material = new THREE.MeshBasicMaterial({
-    color: '#FFFFFF',
-    transparent: true,
-    opacity: 0.96,
-    toneMapped: false,
-  });
-  return new THREE.Mesh(geometry, material);
-}
-
 export default function DeusEye3D({ mode, onLook }: Props) {
   const look = useRef({ x: 0, y: 0 });
   const modeRef = useRef(mode);
@@ -304,8 +285,6 @@ export default function DeusEye3D({ mode, onLook }: Props) {
       const motion = getEyeMotion(modeRef.current, frame);
       const liquid = getLiquidShellMotion(modeRef.current, frame);
       const blink = getEyeBlinkAmount(frame);
-      const targetX = look.current.x * 0.42 * motion.gazeSensitivity;
-      const targetY = look.current.y * 0.30 * motion.gazeSensitivity;
       // The pupil is deliberately anchored to the iris center; only the whole eye may orient.
       pupil.position.set(0, 0, 1.06);
       pupilRing.position.set(0, 0, 1.09);
