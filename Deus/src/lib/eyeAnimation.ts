@@ -81,3 +81,22 @@ export function getLiquidShellMotion(mode: EyeMode, time: number): LiquidShellMo
     splashAmount: intensity * (0.72 + (Math.sin(time * 1.7) + 1) * 0.14),
   };
 }
+
+export type LiquidShellWave = {
+  radial: number;
+  depth: number;
+};
+
+/** Deterministic vertex displacement for a continuously moving liquid-chrome rim. */
+export function getLiquidShellWave(angle: number, time: number, intensity: number): LiquidShellWave {
+  const strength = Math.max(0, Math.min(1.8, intensity));
+  const broadWave = Math.sin(angle * 2.0 + time * 0.82) * 0.032;
+  const rollingWave = Math.sin(angle * 5.0 - time * 1.17 + 0.7) * 0.022;
+  const fineWave = Math.sin(angle * 9.0 + time * 1.63) * 0.009;
+  const splash = Math.pow(Math.max(0, Math.sin(angle * 4.0 + time * 0.94)), 9.0) * 0.075;
+  const depthWave = Math.sin(angle * 3.0 + time * 1.08) * 0.026;
+  return {
+    radial: (broadWave + rollingWave + fineWave + splash) * strength,
+    depth: (depthWave + splash * 0.52) * strength,
+  };
+}
