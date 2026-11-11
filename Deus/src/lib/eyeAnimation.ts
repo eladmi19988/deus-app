@@ -188,12 +188,13 @@ export function getChromeShellLayout(): ChromeShellLayout {
   return {
     irisRadius: 0.78,
     irisZ: 0.94,
-    outerRadius: 1.1,
-    outerTube: 0.19,
+    // The torus inner edge overlaps the iris slightly, eliminating the exposed black gap.
+    outerRadius: 1.02,
+    outerTube: 0.29,
     outerZ: 1.02,
-    innerRadius: 0.89,
-    innerTube: 0.075,
-    innerZ: 1.12,
+    innerRadius: 0.73,
+    innerTube: 0.29,
+    innerZ: 1.02,
     highlightTube: 0.026,
     highlightZ: 1.19,
   };
