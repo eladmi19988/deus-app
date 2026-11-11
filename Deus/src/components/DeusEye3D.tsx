@@ -4,7 +4,7 @@ import { GLView } from 'expo-gl';
 import type { ExpoWebGLRenderingContext } from 'expo-gl';
 import * as THREE from 'three';
 import type { EyeMode } from '../lib/eyeState';
-import { getEyeMotion, getLiquidShellMotion, getLiquidShellWave } from '../lib/eyeAnimation';
+import { getEyeMotion, getLiquidShellMotion, getLiquidShellWave, getSplashShardMotion } from '../lib/eyeAnimation';
 
 type Props = { mode: EyeMode; onLook?: (x: number, y: number) => void };
 
@@ -103,6 +103,50 @@ function deformLiquidRing(mesh: THREE.Mesh, basePositions: Float32Array, time: n
 }
 
 
+function makeChromeShard() {
+  const profile = [
+    new THREE.Vector2(0.002, -0.5),
+    new THREE.Vector2(0.026, -0.34),
+    new THREE.Vector2(0.052, -0.08),
+    new THREE.Vector2(0.043, 0.22),
+    new THREE.Vector2(0.018, 0.43),
+    new THREE.Vector2(0.001, 0.58),
+  ];
+  const geometry = new THREE.LatheGeometry(profile, 20);
+  return new THREE.Mesh(geometry, new THREE.MeshPhysicalMaterial({
+    color: '#DDFBFF',
+    metalness: 0.38,
+    roughness: 0.075,
+    clearcoat: 1,
+    clearcoatRoughness: 0.012,
+    emissive: '#477D89',
+    emissiveIntensity: 0.12,
+  }));
+}
+
+function makeChromeReflectionArc(angle: number, radius: number, length: number, z: number) {
+  const points: THREE.Vector3[] = [];
+  for (let step = 0; step <= 12; step++) {
+    const t = step / 12 - 0.5;
+    const a = angle + t * length;
+    const r = radius + Math.sin(t * Math.PI) * 0.018;
+    points.push(new THREE.Vector3(Math.cos(a) * r, Math.sin(a) * r, z + Math.cos(t * Math.PI * 2) * 0.018));
+  }
+  const curve = new THREE.CatmullRomCurve3(points);
+  const geometry = new THREE.TubeGeometry(curve, 24, 0.009, 6, false);
+  const material = new THREE.MeshPhysicalMaterial({
+    color: '#E9FFFF',
+    metalness: 0.22,
+    roughness: 0.055,
+    clearcoat: 1,
+    emissive: '#79D5E2',
+    emissiveIntensity: 0.24,
+    transparent: true,
+    opacity: 0.78,
+  });
+  return new THREE.Mesh(geometry, material);
+}
+
 export default function DeusEye3D({ mode, onLook }: Props) {
   const look = useRef({ x: 0, y: 0 });
   const modeRef = useRef(mode);
@@ -150,26 +194,24 @@ export default function DeusEye3D({ mode, onLook }: Props) {
     innerMetal.position.z = 0.76;
     root.add(innerMetal);
 
-    // Detached chrome droplets recreate the splash fragments in the reference clip.
+    // Broken liquid-chrome splinters: elongated, tapered and individually animated.
     const droplets: THREE.Mesh[] = [];
-    const dropletSeeds: { angle: number; radius: number; speed: number; phase: number }[] = [];
-    for (let i = 0; i < 13; i++) {
-      const size = 0.018 + (i % 4) * 0.012;
-      const drop = new THREE.Mesh(
-        new THREE.SphereGeometry(size, 16, 12),
-        new THREE.MeshPhysicalMaterial({
-          color: i % 3 === 0 ? '#F2FFFF' : '#9EBFC5',
-          metalness: 0.96, roughness: 0.075, clearcoat: 1,
-          clearcoatRoughness: 0.025
-        })
-      );
-      const angle = (i / 13) * Math.PI * 2 + (i % 3) * 0.17;
-      const radius = 1.42 + (i % 4) * 0.12;
-      drop.position.set(Math.cos(angle) * radius, Math.sin(angle) * radius, 0.16 + (i % 3) * 0.08);
-      drop.scale.set(0.8, 1.35 + (i % 3) * 0.3, 0.8);
-      root.add(drop);
-      droplets.push(drop);
-      dropletSeeds.push({ angle, radius, speed: 0.16 + (i % 5) * 0.035, phase: i * 1.73 });
+    const dropletSeeds: { angle: number; index: number }[] = [];
+    for (let i = 0; i < 11; i++) {
+      const shard = makeChromeShard();
+      const angle = (i / 11) * Math.PI * 2 + Math.sin(i * 2.3) * 0.16;
+      shard.scale.set(0.72 + (i % 3) * 0.18, 1.0, 0.72 + (i % 2) * 0.16);
+      root.add(shard);
+      droplets.push(shard);
+      dropletSeeds.push({ angle, index: i });
+    }
+
+    // Narrow specular streaks fake a moving studio reflection across the chrome.
+    const reflectionArcs: THREE.Mesh[] = [];
+    for (let i = 0; i < 7; i++) {
+      const arc = makeChromeReflectionArc(i * (Math.PI * 2 / 7) + 0.18, 1.315, 0.24 + (i % 3) * 0.1, 0.16 + (i % 2) * 0.035);
+      root.add(arc);
+      reflectionArcs.push(arc);
     }
 
     const irisUniforms = { uTime: { value: 0 }, uGlow: { value: 0.58 } };
@@ -222,8 +264,8 @@ export default function DeusEye3D({ mode, onLook }: Props) {
 
     const particles = new THREE.Group();
     scene.add(particles);
-    for (let i = 0; i < 18; i++) {
-      const radius = 0.012 + Math.random() * 0.028;
+    for (let i = 0; i < 10; i++) {
+      const radius = 0.008 + Math.random() * 0.014;
       const dot = new THREE.Mesh(
         new THREE.SphereGeometry(radius, 10, 10),
         new THREE.MeshBasicMaterial({
@@ -265,12 +307,28 @@ export default function DeusEye3D({ mode, onLook }: Props) {
       outerShell.rotation.z = Math.sin(frame * 0.42) * 0.025;
       shellHighlight.rotation.z = -Math.sin(frame * 0.31) * 0.032;
       innerMetal.rotation.z = Math.sin(frame * 0.24) * 0.018;
-      droplets.forEach((drop, index) => {
+      droplets.forEach((shard, index) => {
         const seed = dropletSeeds[index];
-        const angle = seed.angle + frame * seed.speed * liquid.dropletOrbit;
-        const radius = seed.radius + Math.sin(frame * 1.35 + seed.phase) * 0.055 * liquid.splashAmount;
-        drop.position.set(Math.cos(angle) * radius, Math.sin(angle) * radius, 0.12 + Math.sin(frame * 1.7 + seed.phase) * 0.12);
-        drop.rotation.z = angle + Math.PI / 2;
+        const motion = getSplashShardMotion(seed.angle, frame, seed.index, liquid.splashAmount);
+        const angle = seed.angle + Math.sin(frame * 0.22 + seed.index) * 0.035;
+        const radialX = Math.cos(angle);
+        const radialY = Math.sin(angle);
+        const tangentX = -radialY;
+        const tangentY = radialX;
+        shard.position.set(
+          radialX * motion.radial + tangentX * motion.tangent,
+          radialY * motion.radial + tangentY * motion.tangent,
+          motion.depth
+        );
+        shard.rotation.z = angle - Math.PI / 2 + motion.twist;
+        shard.rotation.x = Math.sin(frame * 0.9 + index) * 0.32;
+        shard.rotation.y = Math.cos(frame * 0.7 + index * 1.4) * 0.26;
+        shard.scale.set(0.72 * motion.width, motion.stretch, 0.72 * motion.width);
+      });
+      reflectionArcs.forEach((arc, index) => {
+        const material = arc.material as THREE.MeshPhysicalMaterial;
+        material.opacity = 0.52 + (Math.sin(frame * 0.9 + index * 1.7) + 1) * 0.18;
+        arc.rotation.z = Math.sin(frame * 0.24 + index) * 0.012;
       });
       particles.rotation.z = Math.sin(frame * 0.14) * 0.025;
       renderer.render(scene, camera);
