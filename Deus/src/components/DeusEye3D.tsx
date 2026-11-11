@@ -4,7 +4,7 @@ import { GLView } from 'expo-gl';
 import type { ExpoWebGLRenderingContext } from 'expo-gl';
 import * as THREE from 'three';
 import type { EyeMode } from '../lib/eyeState';
-import { getEyeMotion, getEyeBlinkAmount, getLiquidShellMotion, getLiquidShellWave, getSplashShardMotion } from '../lib/eyeAnimation';
+import { getEyeMotion, getEyeBlinkAmount, getLiquidShellMotion, getLiquidShellWave, getSplashShardMotion, getChromeShellLayout } from '../lib/eyeAnimation';
 
 type Props = { mode: EyeMode; onLook?: (x: number, y: number) => void };
 
@@ -79,9 +79,27 @@ function makeOrganicRing(radius: number, tube: number, color: string, opacity = 
     const splash = Math.pow(Math.max(0, Math.sin(angle * 5.0 + 0.7)), 8.0) * 0.11;
     positions.setXYZ(i, x * (scale + splash), y * (scale + splash), z + Math.sin(angle * 2.0) * 0.07 + splash * 0.6);
   }
+  // A procedural silver reflection band keeps the chrome readable even without an HDR environment map.
+  const colors = new Float32Array(positions.count * 3);
+  const baseColor = new THREE.Color(color);
+  for (let i = 0; i < positions.count; i++) {
+    const x = positions.getX(i);
+    const y = positions.getY(i);
+    const z = positions.getZ(i);
+    const angle = Math.atan2(y, x);
+    const crossAngle = Math.atan2(z, Math.hypot(x, y) - radius);
+    const studioStripe = Math.pow(Math.max(0, Math.cos(crossAngle - 0.58)), 18);
+    const angularShade = 0.42 + Math.sin(angle * 2.2 + 0.4) * 0.15 + Math.sin(angle * 5.3 + 1.1) * 0.09;
+    const shade = Math.max(0.13, angularShade + studioStripe * 0.88);
+    colors[i * 3] = baseColor.r * shade;
+    colors[i * 3 + 1] = baseColor.g * shade;
+    colors[i * 3 + 2] = baseColor.b * shade;
+  }
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
   geometry.computeVertexNormals();
   return new THREE.Mesh(geometry, new THREE.MeshPhysicalMaterial({
-    color, metalness: 0.46, roughness: 0.095, clearcoat: 1, clearcoatRoughness: 0.02,
+    color: '#FFFFFF', vertexColors: true, metalness: 0.82, roughness: 0.17,
+    clearcoat: 1, clearcoatRoughness: 0.012,
     transparent: opacity < 1, opacity
   }));
 }
@@ -133,16 +151,11 @@ function makeChromeReflectionArc(angle: number, radius: number, length: number, 
     points.push(new THREE.Vector3(Math.cos(a) * r, Math.sin(a) * r, z + Math.cos(t * Math.PI * 2) * 0.018));
   }
   const curve = new THREE.CatmullRomCurve3(points);
-  const geometry = new THREE.TubeGeometry(curve, 24, 0.009, 6, false);
-  const material = new THREE.MeshPhysicalMaterial({
+  const geometry = new THREE.TubeGeometry(curve, 24, 0.014, 8, false);
+  const material = new THREE.MeshBasicMaterial({
     color: '#E9FFFF',
-    metalness: 0.22,
-    roughness: 0.055,
-    clearcoat: 1,
-    emissive: '#79D5E2',
-    emissiveIntensity: 0.24,
     transparent: true,
-    opacity: 0.78,
+    opacity: 0.82,
   });
   return new THREE.Mesh(geometry, material);
 }
@@ -178,20 +191,20 @@ export default function DeusEye3D({ mode, onLook }: Props) {
     const root = new THREE.Group();
     scene.add(root);
 
-    // The reference is a floating eye: no solid eyeball, no oversized HUD.
-    // The silver shell is intentionally irregular, like liquid chrome frozen mid-splash.
-    const outerShell = makeOrganicRing(1.18, 0.19, '#F3FFFF');
-    outerShell.position.z = 0.02;
+    // Sculpted foreground chrome: a broad silver shell, a bright outer lip and an inner bevel.
+    const chromeLayout = getChromeShellLayout();
+    const outerShell = makeOrganicRing(chromeLayout.outerRadius, chromeLayout.outerTube, '#D4DEE1');
+    outerShell.position.z = chromeLayout.outerZ;
     root.add(outerShell);
     const outerShellBase = new Float32Array((outerShell.geometry.attributes.position as THREE.BufferAttribute).array as Float32Array);
 
-    const shellHighlight = makeOrganicRing(1.18, 0.028, '#FFFFFF', 1);
-    shellHighlight.position.z = 0.22;
+    const shellHighlight = makeOrganicRing(chromeLayout.outerRadius + 0.14, chromeLayout.highlightTube, '#FFFFFF');
+    shellHighlight.position.z = chromeLayout.highlightZ;
     root.add(shellHighlight);
     const shellHighlightBase = new Float32Array((shellHighlight.geometry.attributes.position as THREE.BufferAttribute).array as Float32Array);
 
-    const innerMetal = makeOrganicRing(0.91, 0.075, '#D9F2F4', 1);
-    innerMetal.position.z = 0.79;
+    const innerMetal = makeOrganicRing(chromeLayout.innerRadius, chromeLayout.innerTube, '#E4EFF1');
+    innerMetal.position.z = chromeLayout.innerZ;
     root.add(innerMetal);
 
     // Broken liquid-chrome splinters: elongated, tapered and individually animated.
@@ -209,7 +222,7 @@ export default function DeusEye3D({ mode, onLook }: Props) {
     // Narrow specular streaks fake a moving studio reflection across the chrome.
     const reflectionArcs: THREE.Mesh[] = [];
     for (let i = 0; i < 7; i++) {
-      const arc = makeChromeReflectionArc(i * (Math.PI * 2 / 7) + 0.18, 1.19, 0.24 + (i % 3) * 0.1, 0.24 + (i % 2) * 0.035);
+      const arc = makeChromeReflectionArc(i * (Math.PI * 2 / 7) + 0.18, chromeLayout.outerRadius + 0.13, 0.24 + (i % 3) * 0.1, 1.27 + (i % 2) * 0.035);
       root.add(arc);
       reflectionArcs.push(arc);
     }
@@ -289,15 +302,15 @@ export default function DeusEye3D({ mode, onLook }: Props) {
     root.add(blinkSeam);
 
     const lights = [
-      new THREE.PointLight('#F1FFFF', 6.2, 18),
-      new THREE.PointLight('#238FC0', 3.2, 13),
-      new THREE.PointLight('#D5B36B', 1.45, 10),
-      new THREE.PointLight('#78E8D9', 1.0, 8)
+      new THREE.PointLight('#F1FFFF', 9.0, 18),
+      new THREE.PointLight('#238FC0', 4.2, 13),
+      new THREE.PointLight('#D5B36B', 2.0, 10),
+      new THREE.PointLight('#78E8D9', 1.7, 8)
     ];
-    lights[0].position.set(-3.2, 3.0, 5.2);
-    lights[1].position.set(3.0, -2.2, 4.0);
+    lights[0].position.set(-2.4, 2.8, 5.4);
+    lights[1].position.set(2.8, -1.8, 4.8);
     lights[2].position.set(-0.2, 2.3, -1.5);
-    lights[3].position.set(2.5, 1.5, 2.5);
+    lights[3].position.set(2.5, 1.4, 3.4);
     lights.forEach(light => scene.add(light));
     scene.add(new THREE.AmbientLight('#C5E5E8', 1.3));
 
