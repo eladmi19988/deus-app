@@ -150,6 +150,26 @@ export function getEyeBlinkAmount(time: number): number {
   return 1 - ease((progress - closeFraction) / (1 - closeFraction));
 }
 
+
+export type ChromeSurfaceProfile = { radial: number; depth: number; reflection: number };
+
+/** High-contrast liquid-chrome folds and studio reflection bands for the sculpted shell. */
+export function getChromeSurfaceProfile(angle: number, crossAngle: number, time: number, intensity: number): ChromeSurfaceProfile {
+  const strength = Math.max(0.25, Math.min(1.8, intensity));
+  const crest = Math.pow(Math.max(0, Math.sin(angle * 7.0 + time * 0.48 + 0.6)), 10);
+  const broad = Math.sin(angle * 2.0 + time * 0.36) * 0.105
+    + Math.sin(angle * 3.0 - time * 0.29 + 0.8) * 0.065;
+  const narrow = Math.sin(angle * 5.0 + time * 0.62) * 0.035;
+  const highlightA = Math.exp(-Math.pow((crossAngle - 0.42) / 0.22, 2));
+  const highlightB = Math.exp(-Math.pow((crossAngle + 1.05) / 0.16, 2)) * 0.82;
+  const reflection = Math.min(1.8, highlightA * 1.25 + highlightB + crest * 0.45);
+  return {
+    radial: (broad + narrow + crest * 0.19) * strength,
+    depth: (Math.sin(angle * 3.0 + time * 0.52) * 0.055 + crest * 0.12) * strength,
+    reflection,
+  };
+}
+
 export type ChromeShellLayout = {
   irisRadius: number;
   irisZ: number;
