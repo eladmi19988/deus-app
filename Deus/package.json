@@ -26,7 +26,7 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "test": "node --experimental-strip-types --test src/lib/eyeAnimation.test.mjs api/_lib/chat-validation.test.cjs"
+    "test": "node --experimental-strip-types --test src/lib/eyeAnimation.test.mjs api/_lib/chat-validation.test.cjs api/_lib/chat-proxy.test.cjs"
   },
   "private": true
 }
