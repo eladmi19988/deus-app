@@ -109,16 +109,16 @@ test('chrome blink remains finite and between open and fully closed for negative
   }
 });
 
-test('chrome shell sits in front of the iris and leaves a visible metal band around it', async () => {
+test('chrome shell wraps behind the eye and its aperture overlaps the iris edge', async () => {
   const { getChromeShellLayout } = await import('./eyeAnimation.ts');
   const shell = getChromeShellLayout();
-  assert.ok(shell.outerZ > shell.irisZ);
-  assert.ok(shell.innerZ > shell.irisZ);
-  assert.ok(shell.outerRadius - shell.outerTube < shell.irisRadius, 'metal must overlap the iris edge');
-  assert.ok(shell.outerRadius + shell.outerTube > shell.irisRadius + 0.35, 'metal must form a broad continuous surround');
-  assert.equal(shell.innerRadius, shell.outerRadius);
-  assert.equal(shell.innerTube, shell.outerTube);
-  assert.ok(shell.outerTube > 0.25, 'the surround must be one broad continuous metal band');
+  assert.equal(shell.eyeCenterZ, 0);
+  assert.ok(shell.shellRadius > shell.eyeRadius);
+  assert.ok(shell.shellStartPolar > 0 && shell.shellStartPolar < Math.PI / 2);
+  assert.ok(shell.shellEndPolar > Math.PI - 0.1);
+  assert.ok(shell.shellApertureRadius < shell.irisRadius, 'chrome lip must slightly overlap the iris edge');
+  assert.ok(shell.irisZ > shell.eyeRadius * 0.99);
+  assert.ok(shell.pupilZ > shell.irisZ);
 });
 
 
