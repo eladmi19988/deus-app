@@ -132,3 +132,27 @@ test('liquid chrome profile produces bright studio bands and a changing sculpted
   assert.ok(Number.isFinite(brightBand.radial) && Number.isFinite(brightBand.depth));
   assert.notEqual(brightBand.radial, laterFrame.radial);
 });
+
+
+test('wrapped eye layout keeps the globe, iris and pupil centered on one axis', async () => {
+  const { getChromeShellLayout } = await import('./eyeAnimation.ts');
+  const layout = getChromeShellLayout();
+  assert.equal(layout.eyeCenterZ, 0);
+  assert.ok(layout.irisRadius > layout.shellApertureRadius);
+  assert.ok(layout.irisZ > layout.eyeRadius * 0.99);
+  assert.ok(layout.pupilZ > layout.irisZ);
+  assert.ok(layout.shellRadius > layout.eyeRadius);
+  assert.ok(layout.shellEndPolar > Math.PI - 0.1);
+});
+
+test('wrapped chrome shell generates finite points around the full eye circumference', async () => {
+  const { getChromeShellLayout, getWrappedChromeShellPoint } = await import('./eyeAnimation.ts');
+  const layout = getChromeShellLayout();
+  for (const angle of [0, Math.PI / 2, Math.PI, Math.PI * 1.5]) {
+    for (const polar of [layout.shellStartPolar, 1.2, 2.1, layout.shellEndPolar]) {
+      const point = getWrappedChromeShellPoint(angle, polar, 2.4, 1.1);
+      assert.ok(Number.isFinite(point.x) && Number.isFinite(point.y) && Number.isFinite(point.z));
+      assert.ok(Math.hypot(point.x, point.y, point.z) > layout.eyeRadius);
+    }
+  }
+});
