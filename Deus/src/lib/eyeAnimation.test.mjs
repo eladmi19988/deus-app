@@ -77,3 +77,14 @@ test('liquid chrome deformation remains subtle in idle and intensifies in action
   const action = getLiquidShellWave(1.2, 2.4, getLiquidShellMotion('action', 2.4).splashAmount);
   assert.ok(Math.abs(action.radial) > Math.abs(idle.radial));
 });
+
+test('liquid chrome fragments stretch into directional splash shards instead of round dots', async () => {
+  const { getSplashShardMotion } = await import('./eyeAnimation.ts');
+  const idle = getSplashShardMotion(0.8, 2.1, 3, 0.55);
+  const action = getSplashShardMotion(0.8, 2.1, 3, 1.4);
+  for (const value of Object.values(action)) assert.ok(Number.isFinite(value));
+  assert.ok(action.stretch > 1.5);
+  assert.ok(action.stretch > idle.stretch);
+  assert.ok(action.width > 0 && action.width < 1);
+  assert.ok(action.depth !== idle.depth);
+});
