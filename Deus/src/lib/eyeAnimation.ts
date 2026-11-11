@@ -66,3 +66,18 @@ export function getEyeMotion(mode: EyeMode, time: number): EyeMotion {
       };
   }
 }
+
+export type LiquidShellMotion = {
+  shellPulse: number;
+  dropletOrbit: number;
+  splashAmount: number;
+};
+
+export function getLiquidShellMotion(mode: EyeMode, time: number): LiquidShellMotion {
+  const intensity = mode === 'action' ? 1.35 : mode === 'speaking' ? 1.12 : mode === 'thinking' ? 0.82 : 0.58;
+  return {
+    shellPulse: 1 + Math.sin(time * (1.1 + intensity)) * 0.035 * intensity,
+    dropletOrbit: 0.22 + intensity * 0.34,
+    splashAmount: intensity * (0.72 + (Math.sin(time * 1.7) + 1) * 0.14),
+  };
+}
