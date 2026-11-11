@@ -171,31 +171,53 @@ export function getChromeSurfaceProfile(angle: number, crossAngle: number, time:
 }
 
 export type ChromeShellLayout = {
+  eyeRadius: number;
+  eyeCenterZ: number;
   irisRadius: number;
   irisZ: number;
-  outerRadius: number;
-  outerTube: number;
-  outerZ: number;
-  innerRadius: number;
-  innerTube: number;
-  innerZ: number;
-  highlightTube: number;
-  highlightZ: number;
+  pupilRadius: number;
+  pupilZ: number;
+  shellRadius: number;
+  shellApertureRadius: number;
+  shellStartPolar: number;
+  shellEndPolar: number;
 };
 
-/** Front-facing chrome geometry; the inner edge intentionally overlaps the iris to leave no black seam. */
+/** A single spherical chrome skin wraps around the eyeball and leaves only a tight iris aperture. */
 export function getChromeShellLayout(): ChromeShellLayout {
+  const shellRadius = 1.12;
+  const shellApertureRadius = 0.76;
   return {
+    eyeRadius: 0.92,
+    eyeCenterZ: 0,
     irisRadius: 0.78,
     irisZ: 0.94,
-    // The torus inner edge overlaps the iris slightly, eliminating the exposed black gap.
-    outerRadius: 1.02,
-    outerTube: 0.29,
-    outerZ: 1.02,
-    innerRadius: 0.73,
-    innerTube: 0.29,
-    innerZ: 1.02,
-    highlightTube: 0.026,
-    highlightZ: 1.19,
+    pupilRadius: 0.29,
+    pupilZ: 0.99,
+    shellRadius,
+    shellApertureRadius,
+    shellStartPolar: Math.asin(shellApertureRadius / shellRadius),
+    shellEndPolar: Math.PI - 0.025,
+  };
+}
+
+/** Surface point for the continuous shell, expressed around the eye's fixed center. */
+export function getWrappedChromeShellPoint(
+  angle: number,
+  polarAngle: number,
+  time: number,
+  intensity: number,
+): { x: number; y: number; z: number } {
+  const layout = getChromeShellLayout();
+  const profile = getChromeSurfaceProfile(angle, Math.PI / 2 - polarAngle, time, intensity);
+  const wave = getLiquidShellWave(angle, time, intensity);
+  const apertureLip = -Math.exp(-Math.pow((polarAngle - layout.shellStartPolar) / 0.085, 2)) * 0.006;
+  const radius = layout.shellRadius + profile.radial * 0.025 + wave.radial * 0.045 + apertureLip;
+  const depth = profile.depth * 0.018 + wave.depth * 0.04;
+  const sinPolar = Math.sin(polarAngle);
+  return {
+    x: radius * sinPolar * Math.cos(angle),
+    y: radius * sinPolar * Math.sin(angle),
+    z: radius * Math.cos(polarAngle) + depth,
   };
 }
