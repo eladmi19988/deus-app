@@ -88,3 +88,23 @@ test('liquid chrome fragments stretch into directional splash shards instead of 
   assert.ok(action.width > 0 && action.width < 1);
   assert.ok(action.depth !== idle.depth);
 });
+
+test('chrome blink fully covers the eye briefly and then reopens on a repeating cycle', async () => {
+  const { getEyeBlinkAmount } = await import('./eyeAnimation.ts');
+  const blinkStart = 5.8 - 0.42;
+
+  assert.equal(getEyeBlinkAmount(0), 0);
+  assert.equal(getEyeBlinkAmount(blinkStart), 0);
+  assert.ok(getEyeBlinkAmount(blinkStart + 0.42 * 0.34) > 0.98);
+  assert.equal(getEyeBlinkAmount(5.8), 0);
+  assert.equal(getEyeBlinkAmount(5.8 + 0.2), getEyeBlinkAmount(0.2));
+});
+
+test('chrome blink remains finite and between open and fully closed for negative and long-running times', async () => {
+  const { getEyeBlinkAmount } = await import('./eyeAnimation.ts');
+  for (const time of [-1000, -0.2, 0, 5.4, 1_000_000]) {
+    const amount = getEyeBlinkAmount(time);
+    assert.ok(Number.isFinite(amount));
+    assert.ok(amount >= 0 && amount <= 1);
+  }
+});
