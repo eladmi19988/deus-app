@@ -126,3 +126,26 @@ export function getSplashShardMotion(angle: number, time: number, index: number,
     twist: Math.sin(time * 0.66 + phase) * 0.24,
   };
 }
+
+/**
+ * A short top-down chrome eyelid sweep. The animation clock advances at
+ * 0.72 units per second, so this produces a natural blink roughly every 8 seconds.
+ */
+export function getEyeBlinkAmount(time: number): number {
+  const period = 5.8;
+  const duration = 0.42;
+  const closeFraction = 0.34;
+  const phase = ((time % period) + period) % period;
+  const start = period - duration;
+
+  if (phase < start) return 0;
+
+  const progress = (phase - start) / duration;
+  const ease = (value: number) => value * value * (3 - 2 * value);
+
+  if (progress <= closeFraction) {
+    return ease(progress / closeFraction);
+  }
+
+  return 1 - ease((progress - closeFraction) / (1 - closeFraction));
+}
