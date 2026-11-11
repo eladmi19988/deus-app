@@ -199,15 +199,6 @@ export default function DeusEye3D({ mode, onLook }: Props) {
     root.add(outerShell);
     const outerShellBase = new Float32Array((outerShell.geometry.attributes.position as THREE.BufferAttribute).array as Float32Array);
 
-    const shellHighlight = makeOrganicRing(chromeLayout.outerRadius + 0.14, chromeLayout.highlightTube, '#FFFFFF');
-    shellHighlight.position.z = chromeLayout.highlightZ;
-    root.add(shellHighlight);
-    const shellHighlightBase = new Float32Array((shellHighlight.geometry.attributes.position as THREE.BufferAttribute).array as Float32Array);
-
-    const innerMetal = makeOrganicRing(chromeLayout.innerRadius, chromeLayout.innerTube, '#E4EFF1');
-    innerMetal.position.z = chromeLayout.innerZ;
-    root.add(innerMetal);
-
     // Broken liquid-chrome splinters: elongated, tapered and individually animated.
     const droplets: THREE.Mesh[] = [];
     const dropletSeeds: { angle: number; index: number }[] = [];
@@ -218,14 +209,6 @@ export default function DeusEye3D({ mode, onLook }: Props) {
       root.add(shard);
       droplets.push(shard);
       dropletSeeds.push({ angle, index: i });
-    }
-
-    // Narrow specular streaks fake a moving studio reflection across the chrome.
-    const reflectionArcs: THREE.Mesh[] = [];
-    for (let i = 0; i < 9; i++) {
-      const arc = makeChromeReflectionArc(i * (Math.PI * 2 / 7) + 0.18, chromeLayout.outerRadius + 0.12, 0.32 + (i % 3) * 0.13, 1.29 + (i % 2) * 0.035);
-      root.add(arc);
-      reflectionArcs.push(arc);
     }
 
     const irisUniforms = { uTime: { value: 0 }, uGlow: { value: 0.58 } };
@@ -266,14 +249,9 @@ export default function DeusEye3D({ mode, onLook }: Props) {
     // Chrome eyelids sweep over the iris from top and bottom during a natural blink.
     const upperBlinkLid = new THREE.Mesh(
       new THREE.SphereGeometry(0.82, 64, 32, 0, Math.PI * 2, 0, Math.PI / 2),
-      new THREE.MeshPhysicalMaterial({
-        color: '#D9E8EA',
-        metalness: 0.88,
-        roughness: 0.068,
-        clearcoat: 1,
-        clearcoatRoughness: 0.014,
-        emissive: '#294A52',
-        emissiveIntensity: 0.13,
+      new THREE.MeshBasicMaterial({
+        color: '#D4DEE1',
+        toneMapped: false,
         side: THREE.DoubleSide,
       })
     );
@@ -288,19 +266,6 @@ export default function DeusEye3D({ mode, onLook }: Props) {
     lowerBlinkLid.scale.set(1.04, 1.04, 0.16);
     lowerBlinkLid.position.set(0, -0.84, 1.23);
     root.add(lowerBlinkLid);
-
-    const blinkSeam = new THREE.Mesh(
-      new THREE.BoxGeometry(1.28, 0.012, 0.018),
-      new THREE.MeshPhysicalMaterial({
-        color: '#263B40',
-        metalness: 0.86,
-        roughness: 0.2,
-        transparent: true,
-        opacity: 0,
-      })
-    );
-    blinkSeam.position.set(0, 0, 1.39);
-    root.add(blinkSeam);
 
     const lights = [
       new THREE.PointLight('#FFFFFF', 14.0, 18),
@@ -341,24 +306,19 @@ export default function DeusEye3D({ mode, onLook }: Props) {
       const blink = getEyeBlinkAmount(frame);
       const targetX = look.current.x * 0.42 * motion.gazeSensitivity;
       const targetY = look.current.y * 0.30 * motion.gazeSensitivity;
-      pupil.position.x += (targetX - pupil.position.x) * 0.105;
-      pupil.position.y += (targetY - pupil.position.y) * 0.105;
-      pupilRing.position.x = pupil.position.x;
-      pupilRing.position.y = pupil.position.y;
+      // The pupil is deliberately anchored to the iris center; only the whole eye may orient.
+      pupil.position.set(0, 0, 1.06);
+      pupilRing.position.set(0, 0, 1.09);
 
       const lidOffset = 0.84 * (1 - blink);
       upperBlinkLid.position.y = lidOffset;
       lowerBlinkLid.position.y = -lidOffset;
       upperBlinkLid.visible = blink > 0.008;
       lowerBlinkLid.visible = blink > 0.008;
-      const seamMaterial = blinkSeam.material as THREE.MeshPhysicalMaterial;
-      seamMaterial.opacity = THREE.MathUtils.clamp((blink - 0.82) / 0.18, 0, 1) * 0.42;
-      blinkSeam.visible = seamMaterial.opacity > 0.01;
-
       iris.scale.set(motion.pulse, motion.pulse, 1);
       irisRim.scale.set(motion.pulse, motion.pulse, 1);
-      pupil.scale.set(1.04 * motion.pupilScale, 1.04 * motion.pupilScale, 0.28);
-      pupilRing.scale.setScalar(motion.pupilScale);
+      pupil.scale.set(1.04, 1.04, 0.28);
+      pupilRing.scale.setScalar(1);
       irisUniforms.uTime.value = frame * motion.scanSpeed;
       irisUniforms.uGlow.value = motion.glow;
       const breath = 1 + Math.sin(frame * 1.15) * 0.006;
@@ -366,10 +326,7 @@ export default function DeusEye3D({ mode, onLook }: Props) {
       root.rotation.y += ((look.current.x * 0.105 + Math.sin(frame * 0.31) * 0.024) - root.rotation.y) * 0.022;
       root.rotation.x += ((-look.current.y * 0.065 + Math.sin(frame * 0.43) * 0.016) - root.rotation.x) * 0.022;
       deformLiquidRing(outerShell, outerShellBase, frame, liquid.splashAmount);
-      deformLiquidRing(shellHighlight, shellHighlightBase, frame * 0.86, liquid.splashAmount * 0.68);
-      outerShell.rotation.z = Math.sin(frame * 0.42) * 0.025;
-      shellHighlight.rotation.z = -Math.sin(frame * 0.31) * 0.032;
-      innerMetal.rotation.z = Math.sin(frame * 0.24) * 0.018;
+      outerShell.rotation.z = Math.sin(frame * 0.42) * 0.012;
       droplets.forEach((shard, index) => {
         const seed = dropletSeeds[index];
         const motion = getSplashShardMotion(seed.angle, frame, seed.index, liquid.splashAmount);
@@ -387,11 +344,6 @@ export default function DeusEye3D({ mode, onLook }: Props) {
         shard.rotation.x = Math.sin(frame * 0.9 + index) * 0.32;
         shard.rotation.y = Math.cos(frame * 0.7 + index * 1.4) * 0.26;
         shard.scale.set(0.72 * motion.width, motion.stretch, 0.72 * motion.width);
-      });
-      reflectionArcs.forEach((arc, index) => {
-        const material = arc.material as THREE.MeshBasicMaterial;
-        material.opacity = 0.76 + (Math.sin(frame * 0.9 + index * 1.7) + 1) * 0.12;
-        arc.rotation.z = Math.sin(frame * 0.24 + index) * 0.012;
       });
       particles.rotation.z = Math.sin(frame * 0.14) * 0.025;
       renderer.render(scene, camera);
