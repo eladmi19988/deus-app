@@ -4,7 +4,7 @@ import { GLView } from 'expo-gl';
 import type { ExpoWebGLRenderingContext } from 'expo-gl';
 import * as THREE from 'three';
 import type { EyeMode } from '../lib/eyeState';
-import { getEyeMotion, getLiquidShellMotion, getLiquidShellWave, getSplashShardMotion } from '../lib/eyeAnimation';
+import { getEyeMotion, getEyeBlinkAmount, getLiquidShellMotion, getLiquidShellWave, getSplashShardMotion } from '../lib/eyeAnimation';
 
 type Props = { mode: EyeMode; onLook?: (x: number, y: number) => void };
 
@@ -180,18 +180,18 @@ export default function DeusEye3D({ mode, onLook }: Props) {
 
     // The reference is a floating eye: no solid eyeball, no oversized HUD.
     // The silver shell is intentionally irregular, like liquid chrome frozen mid-splash.
-    const outerShell = makeOrganicRing(1.32, 0.105, '#F3FFFF');
+    const outerShell = makeOrganicRing(1.18, 0.19, '#F3FFFF');
     outerShell.position.z = 0.02;
     root.add(outerShell);
     const outerShellBase = new Float32Array((outerShell.geometry.attributes.position as THREE.BufferAttribute).array as Float32Array);
 
-    const shellHighlight = makeOrganicRing(1.27, 0.032, '#FFFFFF', 1);
-    shellHighlight.position.z = 0.14;
+    const shellHighlight = makeOrganicRing(1.18, 0.028, '#FFFFFF', 1);
+    shellHighlight.position.z = 0.22;
     root.add(shellHighlight);
     const shellHighlightBase = new Float32Array((shellHighlight.geometry.attributes.position as THREE.BufferAttribute).array as Float32Array);
 
-    const innerMetal = makeOrganicRing(0.98, 0.042, '#C7E6E8', 1);
-    innerMetal.position.z = 0.76;
+    const innerMetal = makeOrganicRing(0.91, 0.075, '#D9F2F4', 1);
+    innerMetal.position.z = 0.79;
     root.add(innerMetal);
 
     // Broken liquid-chrome splinters: elongated, tapered and individually animated.
@@ -209,7 +209,7 @@ export default function DeusEye3D({ mode, onLook }: Props) {
     // Narrow specular streaks fake a moving studio reflection across the chrome.
     const reflectionArcs: THREE.Mesh[] = [];
     for (let i = 0; i < 7; i++) {
-      const arc = makeChromeReflectionArc(i * (Math.PI * 2 / 7) + 0.18, 1.315, 0.24 + (i % 3) * 0.1, 0.16 + (i % 2) * 0.035);
+      const arc = makeChromeReflectionArc(i * (Math.PI * 2 / 7) + 0.18, 1.19, 0.24 + (i % 3) * 0.1, 0.24 + (i % 2) * 0.035);
       root.add(arc);
       reflectionArcs.push(arc);
     }
@@ -249,6 +249,45 @@ export default function DeusEye3D({ mode, onLook }: Props) {
     pupilRing.position.z = 1.09;
     root.add(pupilRing);
 
+    // Chrome eyelids sweep over the iris from top and bottom during a natural blink.
+    const upperBlinkLid = new THREE.Mesh(
+      new THREE.SphereGeometry(0.82, 64, 32, 0, Math.PI * 2, 0, Math.PI / 2),
+      new THREE.MeshPhysicalMaterial({
+        color: '#D9E8EA',
+        metalness: 0.88,
+        roughness: 0.068,
+        clearcoat: 1,
+        clearcoatRoughness: 0.014,
+        emissive: '#294A52',
+        emissiveIntensity: 0.13,
+        side: THREE.DoubleSide,
+      })
+    );
+    upperBlinkLid.scale.set(1.04, 1.04, 0.16);
+    upperBlinkLid.position.set(0, 0.84, 1.23);
+    root.add(upperBlinkLid);
+
+    const lowerBlinkLid = new THREE.Mesh(
+      new THREE.SphereGeometry(0.82, 64, 32, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2),
+      (upperBlinkLid.material as THREE.MeshPhysicalMaterial).clone()
+    );
+    lowerBlinkLid.scale.set(1.04, 1.04, 0.16);
+    lowerBlinkLid.position.set(0, -0.84, 1.23);
+    root.add(lowerBlinkLid);
+
+    const blinkSeam = new THREE.Mesh(
+      new THREE.BoxGeometry(1.28, 0.012, 0.018),
+      new THREE.MeshPhysicalMaterial({
+        color: '#263B40',
+        metalness: 0.86,
+        roughness: 0.2,
+        transparent: true,
+        opacity: 0,
+      })
+    );
+    blinkSeam.position.set(0, 0, 1.39);
+    root.add(blinkSeam);
+
     const lights = [
       new THREE.PointLight('#F1FFFF', 6.2, 18),
       new THREE.PointLight('#238FC0', 3.2, 13),
@@ -285,12 +324,22 @@ export default function DeusEye3D({ mode, onLook }: Props) {
       frame += 0.012;
       const motion = getEyeMotion(modeRef.current, frame);
       const liquid = getLiquidShellMotion(modeRef.current, frame);
+      const blink = getEyeBlinkAmount(frame);
       const targetX = look.current.x * 0.42 * motion.gazeSensitivity;
       const targetY = look.current.y * 0.30 * motion.gazeSensitivity;
       pupil.position.x += (targetX - pupil.position.x) * 0.105;
       pupil.position.y += (targetY - pupil.position.y) * 0.105;
       pupilRing.position.x = pupil.position.x;
       pupilRing.position.y = pupil.position.y;
+
+      const lidOffset = 0.84 * (1 - blink);
+      upperBlinkLid.position.y = lidOffset;
+      lowerBlinkLid.position.y = -lidOffset;
+      upperBlinkLid.visible = blink > 0.008;
+      lowerBlinkLid.visible = blink > 0.008;
+      const seamMaterial = blinkSeam.material as THREE.MeshPhysicalMaterial;
+      seamMaterial.opacity = THREE.MathUtils.clamp((blink - 0.82) / 0.18, 0, 1) * 0.42;
+      blinkSeam.visible = seamMaterial.opacity > 0.01;
 
       iris.scale.set(motion.pulse, motion.pulse, 1);
       irisRim.scale.set(motion.pulse, motion.pulse, 1);
