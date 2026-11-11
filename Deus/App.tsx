@@ -108,7 +108,7 @@ export default function App() {
         activeConversationId = conversation.id;
         setConversationId(activeConversationId);
       }
-      const { data, error } = await supabase.functions.invoke('deus-chat', {
+      const { data, error } = await supabase.functions.invoke('deus-chat-preview', {
         body: { message: prompt, conversationId: activeConversationId },
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
