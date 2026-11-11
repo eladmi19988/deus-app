@@ -119,3 +119,15 @@ test('chrome shell sits in front of the iris and leaves a visible metal band aro
   assert.ok(shell.highlightZ > shell.outerZ);
   assert.ok(shell.highlightTube < shell.outerTube);
 });
+
+
+test('liquid chrome profile produces bright studio bands and a changing sculpted silhouette', async () => {
+  const { getChromeSurfaceProfile } = await import('./eyeAnimation.ts');
+  const brightBand = getChromeSurfaceProfile(0.8, 0.42, 1.2, 1.1);
+  const darkBand = getChromeSurfaceProfile(0.8, -0.25, 1.2, 1.1);
+  const laterFrame = getChromeSurfaceProfile(0.8, 0.42, 2.4, 1.1);
+  assert.ok(brightBand.reflection > 1.0);
+  assert.ok(brightBand.reflection > darkBand.reflection);
+  assert.ok(Number.isFinite(brightBand.radial) && Number.isFinite(brightBand.depth));
+  assert.notEqual(brightBand.radial, laterFrame.radial);
+});
