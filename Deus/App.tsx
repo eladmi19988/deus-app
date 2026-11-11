@@ -37,20 +37,27 @@ export default function App() {
 
   useEffect(() => {
     let active = true;
-    async function restoreSession() {
-      if (!supabase) return;
-      const { data, error } = await supabase.auth.getSession();
-      if (error || !data.session?.user || !active) return;
-      try { await loadAccount(data.session.user); } catch (e) { console.warn('Could not load D.E.U.S. workspace', e); }
-    }
-    void restoreSession();
-    const { data: listener } = supabase?.auth.onAuthStateChange((_event, session) => {
+    if (!supabase) return;
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
       if (!active) return;
       if (!session?.user) {
-        setUserEmail(null); setUserId(null); setWorkspaceId(null); setConversationId(null);
+        setUserEmail(null);
+        setUserId(null);
+        setWorkspaceId(null);
+        setConversationId(null);
+        return;
       }
-    }) ?? { data: { subscription: { unsubscribe: () => undefined } } };
-    return () => { active = false; listener.subscription.unsubscribe(); };
+      if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'USER_UPDATED') {
+        const user = session.user;
+        void Promise.resolve()
+          .then(() => active ? loadAccount(user) : undefined)
+          .catch(error => console.warn('Could not load D.E.U.S. workspace', error));
+      }
+    });
+    return () => {
+      active = false;
+      listener.subscription.unsubscribe();
+    };
   }, []);
 
   async function signInOrUp(create: boolean) {
@@ -63,7 +70,6 @@ export default function App() {
         : await supabase.auth.signInWithPassword({ email: email.trim(), password });
       if (result.error) throw result.error;
       if (result.data.session?.user) {
-        await loadAccount(result.data.session.user);
         setAuthOpen(false);
         Alert.alert(create ? 'Account created' : 'Welcome back', create ? 'Your D.E.U.S. account is ready.' : 'You are signed in.');
       } else {
@@ -85,7 +91,7 @@ export default function App() {
     if (!prompt) return;
     if (!supabase || !userId) { setReply('Sign in to your D.E.U.S. account to start a private AI conversation.'); return; }
     if (!workspaceId) { setReply('Your account is signed in, but its personal workspace is not available yet. Try signing out and back in.'); return; }
-    setBusy(true); setMode('thinking');
+    setBusy(true); setReply(''); setMode('thinking');
     try {
       const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
       if (sessionError) throw sessionError;
@@ -135,7 +141,7 @@ export default function App() {
       <Text style={s.sectionLabel}>SYSTEM STATE</Text>
       <View style={s.modeRow}>{modes.map(m => <Pressable key={m} onPress={() => setMode(m)} style={[s.modeChip, mode === m && { borderColor: eyeModeColor[m], backgroundColor: `${eyeModeColor[m]}16` }]}><Text style={[s.modeChipText, mode === m && { color: eyeModeColor[m] }]}>{eyeModeLabel[m]}</Text></Pressable>)}</View>
       {reply ? <ScrollView style={s.replyBox}><Text style={s.replyText}>{reply}</Text></ScrollView> : <Text style={s.hint}>Touch the eye to guide its gaze.</Text>}
-      <View style={s.composer}><TextInput style={s.messageInput} value={message} onChangeText={setMessage} placeholder="Talk to D.E.U.S..." placeholderTextColor={colors.muted} multiline /><Pressable disabled={busy} style={s.sendButton} onPress={sendMessage}>{busy ? <ActivityIndicator color="#041016" /> : <Text style={s.sendText}>↑</Text>}</Pressable></View>
+      <View style={s.composer}><TextInput style={s.messageInput} value={message} onChangeText={setMessage} placeholder="Talk to D.E.U.S..." placeholderTextColor={colors.muted} multiline returnKeyType="send" onSubmitEditing={sendMessage} accessibilityLabel="Message D.E.U.S." /><Pressable disabled={busy} style={s.sendButton} onPress={sendMessage}>{busy ? <ActivityIndicator color="#041016" /> : <Text style={s.sendText}>↑</Text>}</Pressable></View>
       <Text style={s.footnote}>{userEmail ? 'ACCOUNT CONNECTED · PRIVATE WORKSPACE' : 'SUPABASE CONNECTED · SIGN IN REQUIRED'}</Text>
     </View>
   </SafeAreaView>;
