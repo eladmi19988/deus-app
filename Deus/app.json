@@ -14,7 +14,8 @@
       "package": "com.eladmi19988.deus"
     },
     "plugins": [
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-status-bar"
     ],
     "extra": {
       "eas": {
