@@ -1,5 +1,6 @@
 const { createClient } = require("@supabase/supabase-js");
 const { validateChatPayload } = require("./_lib/chat-validation.cjs");
+const { createAnthropicPayload, extractAnthropicText } = require("./_lib/chat-proxy.cjs");
 
 module.exports = async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");
@@ -8,12 +9,20 @@ module.exports = async function handler(req, res) {
     return res.status(405).json({ error: { code: "METHOD_NOT_ALLOWED", message: "Use POST." } });
   }
 
-  const authorization = req.headers.authorization || "";
+  const authorization = typeof req.headers.authorization === "string" ? req.headers.authorization : "";
   if (!authorization.startsWith("Bearer ")) {
     return res.status(401).json({ error: { code: "UNAUTHENTICATED", message: "A valid sign-in session is required." } });
   }
 
-  const body = req.body;
+  let body = req.body;
+  if (typeof body === "string") {
+    try {
+      body = JSON.parse(body);
+    } catch {
+      return res.status(400).json({ error: { code: "INVALID_JSON", message: "The request body must be valid JSON." } });
+    }
+  }
+
   const validation = validateChatPayload(body);
   if (!validation.ok) {
     return res.status(422).json({ error: { code: validation.error, message: "The chat request is invalid." } });
@@ -56,17 +65,18 @@ module.exports = async function handler(req, res) {
           "x-api-key": ANTHROPIC_API_KEY,
           "anthropic-version": "2023-06-01",
         },
-        body: JSON.stringify({
-          model: ANTHROPIC_MODEL,
-          max_tokens: 1800,
-          system: body.system,
-          messages: body.messages,
-        }),
-        signal: AbortSignal.timeout(60000),
+        body: JSON.stringify(createAnthropicPayload(body, ANTHROPIC_MODEL)),
+        signal: AbortSignal.timeout(55000),
       });
     } catch (error) {
-      console.error("Claude request failed", error instanceof Error ? error.name : "unknown");
-      return res.status(502).json({ error: { code: "AI_PROVIDER_UNREACHABLE", message: "Could not reach Claude. Try again." } });
+      const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
+      console.error("Claude request failed", timedOut ? "timeout" : error instanceof Error ? error.name : "unknown");
+      return res.status(timedOut ? 504 : 502).json({
+        error: {
+          code: timedOut ? "AI_TIMEOUT" : "AI_PROVIDER_UNREACHABLE",
+          message: timedOut ? "The AI response took too long. Please try again." : "Could not reach Claude. Try again.",
+        },
+      });
     }
 
     let result;
@@ -78,12 +88,18 @@ module.exports = async function handler(req, res) {
 
     if (!providerResponse.ok) {
       console.error("Claude API error", providerResponse.status, result?.error?.type || "unknown");
-      return res.status(502).json({ error: { code: "AI_PROVIDER_ERROR", message: "Claude could not complete this request. Check the API key, model and account access." } });
+      const status = providerResponse.status === 429 ? 429 : providerResponse.status >= 500 ? 502 : 400;
+      return res.status(status).json({
+        error: {
+          code: providerResponse.status === 429 ? "AI_RATE_LIMITED" : "AI_PROVIDER_ERROR",
+          message: providerResponse.status === 429
+            ? "The AI service is busy. Please try again shortly."
+            : "Claude could not complete this request. Check the API key, model and account access.",
+        },
+      });
     }
 
-    const content = Array.isArray(result.content)
-      ? result.content.filter((part) => part.type === "text").map((part) => part.text || "").join("\n").trim()
-      : "";
+    const content = extractAnthropicText(result);
     if (!content) {
       return res.status(502).json({ error: { code: "EMPTY_AI_RESPONSE", message: "Claude returned an empty response." } });
     }
@@ -94,7 +110,7 @@ module.exports = async function handler(req, res) {
         inputTokens: Number(result.usage?.input_tokens || 0),
         outputTokens: Number(result.usage?.output_tokens || 0),
       },
-      model: ANTHROPIC_MODEL,
+      model: typeof result.model === "string" ? result.model : ANTHROPIC_MODEL,
     });
   } catch (error) {
     console.error("deus-chat proxy failed", error instanceof Error ? error.name : "unknown");
