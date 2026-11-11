@@ -105,8 +105,8 @@ function makeChromeMaterial() {
 
 /** One continuous spherical skin: it begins at the iris aperture and wraps around the eye to its back. */
 function makeWrappedChromeShell(layout: ReturnType<typeof getChromeShellLayout>, material: THREE.Material) {
-  const azimuthSegments = 192;
-  const polarSegments = 64;
+  const azimuthSegments = 160;
+  const polarSegments = 48;
   const rowLength = azimuthSegments + 1;
   const positions: number[] = [];
   const indices: number[] = [];
@@ -200,7 +200,8 @@ export default function DeusEye3D({ mode, onLook }: Props) {
     const scene = new THREE.Scene();
     scene.background = new THREE.Color('#000000');
     const camera = new THREE.PerspectiveCamera(34, gl.drawingBufferWidth / gl.drawingBufferHeight, 0.1, 100);
-    camera.position.z = 7.05;
+    camera.position.set(0, 0, 7.05);
+    camera.lookAt(0, 0, 0);
     const renderer = new THREE.WebGLRenderer({ context: gl as any, antialias: true, alpha: false });
     renderer.setSize(gl.drawingBufferWidth, gl.drawingBufferHeight, false);
     renderer.setClearColor('#000000', 1);
@@ -252,10 +253,9 @@ export default function DeusEye3D({ mode, onLook }: Props) {
     iris.position.set(0, 0, chromeLayout.irisZ);
     root.add(iris);
 
-    const irisRim = new THREE.Mesh(
-      new THREE.TorusGeometry(chromeLayout.irisRadius + 0.015, 0.03, 20, 160),
-      new THREE.MeshPhysicalMaterial({ color: '#9AC6CB', metalness: 0.9, roughness: 0.13, clearcoat: 1 })
-    );
+    const irisRimGeometry = new THREE.TorusGeometry(chromeLayout.irisRadius + 0.015, 0.03, 20, 160);
+    addChromeVertexColors(irisRimGeometry);
+    const irisRim = new THREE.Mesh(irisRimGeometry, chromeMaterial);
     irisRim.position.z = chromeLayout.irisZ + 0.012;
     root.add(irisRim);
 
@@ -267,10 +267,9 @@ export default function DeusEye3D({ mode, onLook }: Props) {
     pupil.scale.set(1.04, 1.04, 0.28);
     root.add(pupil);
 
-    const pupilRing = new THREE.Mesh(
-      new THREE.TorusGeometry(chromeLayout.pupilRadius + 0.025, 0.014, 12, 96),
-      new THREE.MeshStandardMaterial({ color: '#D8F6F4', metalness: 0.94, roughness: 0.12 })
-    );
+    const pupilRingGeometry = new THREE.TorusGeometry(chromeLayout.pupilRadius + 0.025, 0.014, 12, 96);
+    addChromeVertexColors(pupilRingGeometry);
+    const pupilRing = new THREE.Mesh(pupilRingGeometry, chromeMaterial);
     pupilRing.position.z = chromeLayout.pupilZ + 0.03;
     root.add(pupilRing);
 
