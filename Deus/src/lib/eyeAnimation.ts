@@ -149,3 +149,32 @@ export function getEyeBlinkAmount(time: number): number {
 
   return 1 - ease((progress - closeFraction) / (1 - closeFraction));
 }
+
+export type ChromeShellLayout = {
+  irisRadius: number;
+  irisZ: number;
+  outerRadius: number;
+  outerTube: number;
+  outerZ: number;
+  innerRadius: number;
+  innerTube: number;
+  innerZ: number;
+  highlightTube: number;
+  highlightZ: number;
+};
+
+/** Front-facing chrome geometry, with a clear annular gap around the iris. */
+export function getChromeShellLayout(): ChromeShellLayout {
+  return {
+    irisRadius: 0.78,
+    irisZ: 0.94,
+    outerRadius: 1.1,
+    outerTube: 0.19,
+    outerZ: 1.02,
+    innerRadius: 0.89,
+    innerTube: 0.075,
+    innerZ: 1.12,
+    highlightTube: 0.026,
+    highlightZ: 1.19,
+  };
+}
