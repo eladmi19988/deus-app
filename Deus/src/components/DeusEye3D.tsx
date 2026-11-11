@@ -4,7 +4,7 @@ import { GLView } from 'expo-gl';
 import type { ExpoWebGLRenderingContext } from 'expo-gl';
 import * as THREE from 'three';
 import type { EyeMode } from '../lib/eyeState';
-import { getEyeMotion, getEyeBlinkAmount, getLiquidShellMotion, getLiquidShellWave, getSplashShardMotion, getChromeShellLayout, getChromeSurfaceProfile, getWrappedChromeShellPoint } from '../lib/eyeAnimation';
+import { getEyeMotion, getEyeBlinkAmount, getLiquidShellMotion, getSplashShardMotion, getChromeShellLayout, getChromeSurfaceProfile, getWrappedChromeShellPoint } from '../lib/eyeAnimation';
 
 type Props = { mode: EyeMode; onLook?: (x: number, y: number) => void };
 
