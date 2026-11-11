@@ -108,3 +108,14 @@ test('chrome blink remains finite and between open and fully closed for negative
     assert.ok(amount >= 0 && amount <= 1);
   }
 });
+
+test('chrome shell sits in front of the iris and leaves a visible metal band around it', async () => {
+  const { getChromeShellLayout } = await import('./eyeAnimation.ts');
+  const shell = getChromeShellLayout();
+  assert.ok(shell.outerZ > shell.irisZ);
+  assert.ok(shell.innerZ > shell.irisZ);
+  assert.ok(shell.outerRadius - shell.outerTube > shell.irisRadius);
+  assert.ok(shell.innerRadius - shell.innerTube > shell.irisRadius);
+  assert.ok(shell.highlightZ > shell.outerZ);
+  assert.ok(shell.highlightTube < shell.outerTube);
+});
