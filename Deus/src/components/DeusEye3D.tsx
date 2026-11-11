@@ -4,7 +4,7 @@ import { GLView } from 'expo-gl';
 import type { ExpoWebGLRenderingContext } from 'expo-gl';
 import * as THREE from 'three';
 import type { EyeMode } from '../lib/eyeState';
-import { getEyePulse } from '../lib/eyeAnimation';
+import { getEyeMotion } from '../lib/eyeAnimation';
 
 type Props = { mode: EyeMode; onLook?: (x: number, y: number) => void };
 
@@ -19,6 +19,7 @@ const irisShader = {
   fragmentShader: `
     varying vec2 vUv;
     uniform float uTime;
+    uniform float uGlow;
     void main() {
       vec2 p = (vUv - 0.5) * 2.0;
       float r = length(p);
@@ -28,7 +29,7 @@ const irisShader = {
       float radial = smoothstep(0.20, 0.96, fibers * 0.5 + 0.5);
       float fine = fineFibers * 0.5 + 0.5;
       float irisMask = 1.0 - smoothstep(0.91, 1.0, r);
-      float outerShade = smoothstep(1.02, 0.58, r);
+      float outerShade = 1.0 - smoothstep(0.58, 1.02, r);
       float innerGlow = 1.0 - smoothstep(0.12, 0.52, r);
 
       vec3 deep = vec3(0.008, 0.035, 0.095);
@@ -36,9 +37,9 @@ const irisShader = {
       vec3 cyan = vec3(0.035, 0.58, 0.68);
       vec3 green = vec3(0.10, 0.58, 0.39);
       vec3 gold = vec3(0.72, 0.49, 0.17);
-      float outerBand = smoothstep(0.98, 0.72, r);
-      float midBand = smoothstep(0.76, 0.42, r);
-      float innerBand = smoothstep(0.40, 0.16, r);
+      float outerBand = 1.0 - smoothstep(0.72, 0.98, r);
+      float midBand = 1.0 - smoothstep(0.42, 0.76, r);
+      float innerBand = 1.0 - smoothstep(0.16, 0.40, r);
 
       vec3 col = mix(deep, ocean, outerBand * 0.95);
       col = mix(col, cyan, midBand * (0.38 + radial * 0.22));
@@ -54,7 +55,7 @@ const irisShader = {
 
       float scanAngle = a - uTime * 0.22;
       float scan = pow(max(0.0, cos(scanAngle)), 34.0) * smoothstep(0.28, 0.82, r);
-      col += scan * vec3(0.10, 0.36, 0.48);
+      col += scan * vec3(0.10, 0.36, 0.48) * uGlow;
       float glint = pow(max(0.0, 1.0 - length(p - vec2(-0.28, 0.34)) * 5.0), 18.0);
       col += glint * vec3(0.72, 0.94, 1.0);
       col += innerGlow * vec3(0.10, 0.13, 0.07);
@@ -82,6 +83,18 @@ function makeOrganicRing(radius: number, tube: number, color: string, opacity = 
     color, metalness: 0.92, roughness: 0.16, clearcoat: 1, clearcoatRoughness: 0.06,
     transparent: opacity < 1, opacity
   }));
+}
+
+function makeHoloArc(radius: number, tube: number, arc: number, color: string, opacity: number, rotation: number) {
+  const mesh = new THREE.Mesh(
+    new THREE.TorusGeometry(radius, tube, 8, 160, arc),
+    new THREE.MeshBasicMaterial({
+      color, transparent: true, opacity, blending: THREE.AdditiveBlending,
+      depthWrite: false, side: THREE.DoubleSide
+    })
+  );
+  mesh.rotation.z = rotation;
+  return mesh;
 }
 
 export default function DeusEye3D({ mode, onLook }: Props) {
@@ -137,7 +150,46 @@ export default function DeusEye3D({ mode, onLook }: Props) {
     innerMetal.position.z = 0.89;
     root.add(innerMetal);
 
-    const irisUniforms = { uTime: { value: 0 } };
+    // A restrained holographic instrument ring gives the eye depth without
+    // obscuring the iris or turning the interface into a flat HUD.
+    const hologram = new THREE.Group();
+    hologram.position.z = -0.18;
+    hologram.scale.set(1.46, 0.88, 0.72);
+    root.add(hologram);
+    const orbitA = makeHoloArc(2.08, 0.014, Math.PI * 1.46, '#58E8F7', 0.54, -0.42);
+    const orbitB = makeHoloArc(2.22, 0.009, Math.PI * 0.72, '#D5B36B', 0.62, 1.16);
+    const orbitC = makeHoloArc(2.34, 0.012, Math.PI * 0.48, '#3C9FC1', 0.48, 3.32);
+    hologram.add(orbitA, orbitB, orbitC);
+
+    const tickPositions: number[] = [];
+    for (let i = 0; i < 72; i++) {
+      const angle = (i / 72) * Math.PI * 2;
+      const major = i % 6 === 0;
+      const innerRadius = major ? 2.17 : 2.205;
+      const outerRadius = 2.27;
+      tickPositions.push(
+        Math.cos(angle) * innerRadius, Math.sin(angle) * innerRadius, 0.015,
+        Math.cos(angle) * outerRadius, Math.sin(angle) * outerRadius, 0.015
+      );
+    }
+    const tickGeometry = new THREE.BufferGeometry();
+    tickGeometry.setAttribute('position', new THREE.Float32BufferAttribute(tickPositions, 3));
+    const ticks = new THREE.LineSegments(tickGeometry, new THREE.LineBasicMaterial({
+      color: '#7CEBFA', transparent: true, opacity: 0.42, depthWrite: false
+    }));
+    hologram.add(ticks);
+
+    for (let i = 0; i < 6; i++) {
+      const angle = (i / 6) * Math.PI * 2 + 0.2;
+      const marker = new THREE.Mesh(
+        new THREE.SphereGeometry(0.026, 10, 10),
+        new THREE.MeshBasicMaterial({ color: i % 2 ? '#6DE7F3' : '#E4C47A' })
+      );
+      marker.position.set(Math.cos(angle) * 2.34, Math.sin(angle) * 2.34, 0.035);
+      hologram.add(marker);
+    }
+
+    const irisUniforms = { uTime: { value: 0 }, uGlow: { value: 0.58 } };
     const iris = new THREE.Mesh(
       new THREE.CircleGeometry(0.96, 160),
       new THREE.ShaderMaterial({
@@ -206,23 +258,30 @@ export default function DeusEye3D({ mode, onLook }: Props) {
     const animate = () => {
       if (!running) return;
       frame += 0.012;
-      const targetX = look.current.x * 0.42;
-      const targetY = look.current.y * 0.30;
+      const motion = getEyeMotion(modeRef.current, frame);
+      const targetX = look.current.x * 0.42 * motion.gazeSensitivity;
+      const targetY = look.current.y * 0.30 * motion.gazeSensitivity;
       pupil.position.x += (targetX - pupil.position.x) * 0.105;
       pupil.position.y += (targetY - pupil.position.y) * 0.105;
       pupilRing.position.x = pupil.position.x;
       pupilRing.position.y = pupil.position.y;
 
-      const pulse = getEyePulse(modeRef.current, frame);
-      iris.scale.setScalar(pulse);
-      irisRim.scale.setScalar(pulse);
-      irisUniforms.uTime.value = frame;
+      iris.scale.set(motion.pulse, motion.pulse, 1);
+      irisRim.scale.set(motion.pulse, motion.pulse, 1);
+      pupil.scale.set(1.04 * motion.pupilScale, 1.04 * motion.pupilScale, 0.28);
+      pupilRing.scale.setScalar(motion.pupilScale);
+      irisUniforms.uTime.value = frame * motion.scanSpeed;
+      irisUniforms.uGlow.value = motion.glow;
       const breath = 1 + Math.sin(frame * 1.15) * 0.006;
       root.scale.set(1.0 * breath, 1.0 * breath, 1.0);
       root.rotation.y += ((look.current.x * 0.105 + Math.sin(frame * 0.31) * 0.024) - root.rotation.y) * 0.022;
       root.rotation.x += ((-look.current.y * 0.065 + Math.sin(frame * 0.43) * 0.016) - root.rotation.x) * 0.022;
       outerShell.rotation.z = Math.sin(frame * 0.22) * 0.009;
       shellHighlight.rotation.z = -Math.sin(frame * 0.18) * 0.012;
+      hologram.rotation.z = Math.sin(frame * 0.12 * motion.orbitSpeed) * 0.035 + frame * 0.0015 * motion.orbitSpeed;
+      orbitA.rotation.z = -0.42 + frame * 0.018 * motion.orbitSpeed;
+      orbitB.rotation.z = 1.16 - frame * 0.026 * motion.orbitSpeed;
+      orbitC.rotation.z = 3.32 + frame * 0.034 * motion.orbitSpeed;
       particles.rotation.z = Math.sin(frame * 0.14) * 0.032;
       renderer.render(scene, camera);
       gl.endFrameEXP();
