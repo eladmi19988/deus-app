@@ -86,17 +86,6 @@ function makeOrganicRing(radius: number, tube: number, color: string, opacity = 
   }));
 }
 
-function makeHoloArc(radius: number, tube: number, arc: number, color: string, opacity: number, rotation: number) {
-  const mesh = new THREE.Mesh(
-    new THREE.TorusGeometry(radius, tube, 8, 160, arc),
-    new THREE.MeshBasicMaterial({
-      color, transparent: true, opacity, blending: THREE.AdditiveBlending,
-      depthWrite: false, side: THREE.DoubleSide
-    })
-  );
-  mesh.rotation.z = rotation;
-  return mesh;
-}
 
 export default function DeusEye3D({ mode, onLook }: Props) {
   const look = useRef({ x: 0, y: 0 });
@@ -145,7 +134,7 @@ export default function DeusEye3D({ mode, onLook }: Props) {
 
     // Detached chrome droplets recreate the splash fragments in the reference clip.
     const droplets: THREE.Mesh[] = [];
-    const dropletSeeds: { angle: number; radius: number; speed: number; phase: number; size: number }[] = [];
+    const dropletSeeds: { angle: number; radius: number; speed: number; phase: number }[] = [];
     for (let i = 0; i < 13; i++) {
       const size = 0.018 + (i % 4) * 0.012;
       const drop = new THREE.Mesh(
@@ -162,7 +151,7 @@ export default function DeusEye3D({ mode, onLook }: Props) {
       drop.scale.set(0.8, 1.35 + (i % 3) * 0.3, 0.8);
       root.add(drop);
       droplets.push(drop);
-      dropletSeeds.push({ angle, radius, speed: 0.16 + (i % 5) * 0.035, phase: i * 1.73, size });
+      dropletSeeds.push({ angle, radius, speed: 0.16 + (i % 5) * 0.035, phase: i * 1.73 });
     }
 
     const irisUniforms = { uTime: { value: 0 }, uGlow: { value: 0.58 } };
