@@ -53,3 +53,27 @@ test('liquid chrome shell has a stable organic pulse and bounded droplet orbit',
   assert.ok(action.dropletOrbit > idle.dropletOrbit);
   assert.ok(Number.isFinite(action.splashAmount));
 });
+
+test('liquid chrome deformation stays finite and bounded while changing over time', async () => {
+  const { getLiquidShellWave } = await import('./eyeAnimation.ts');
+  const samples = [];
+  for (let frame = 0; frame < 80; frame++) {
+    for (let segment = 0; segment < 32; segment++) {
+      const angle = (segment / 32) * Math.PI * 2;
+      const wave = getLiquidShellWave(angle, frame * 0.17, 1.2);
+      assert.ok(Number.isFinite(wave.radial));
+      assert.ok(Number.isFinite(wave.depth));
+      assert.ok(Math.abs(wave.radial) < 0.35);
+      assert.ok(Math.abs(wave.depth) < 0.2);
+      samples.push(wave.radial);
+    }
+  }
+  assert.ok(Math.max(...samples) - Math.min(...samples) > 0.04);
+});
+
+test('liquid chrome deformation remains subtle in idle and intensifies in action mode', async () => {
+  const { getLiquidShellWave, getLiquidShellMotion } = await import('./eyeAnimation.ts');
+  const idle = getLiquidShellWave(1.2, 2.4, getLiquidShellMotion('idle', 2.4).splashAmount);
+  const action = getLiquidShellWave(1.2, 2.4, getLiquidShellMotion('action', 2.4).splashAmount);
+  assert.ok(Math.abs(action.radial) > Math.abs(idle.radial));
+});
