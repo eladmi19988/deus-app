@@ -41,3 +41,15 @@ test('holographic motion values remain finite for long-running animation times',
     assert.ok(motion.pupilScale > 0);
   }
 });
+
+test('liquid chrome shell has a stable organic pulse and bounded droplet orbit', async () => {
+  const { getLiquidShellMotion } = await import('./eyeAnimation.ts');
+  const idle = getLiquidShellMotion('idle', 0);
+  const action = getLiquidShellMotion('action', Math.PI / 2);
+
+  assert.ok(idle.shellPulse > 0.9 && idle.shellPulse < 1.1);
+  assert.ok(action.shellPulse > 0.9 && action.shellPulse < 1.1);
+  assert.ok(idle.dropletOrbit > 0);
+  assert.ok(action.dropletOrbit > idle.dropletOrbit);
+  assert.ok(Number.isFinite(action.splashAmount));
+});
