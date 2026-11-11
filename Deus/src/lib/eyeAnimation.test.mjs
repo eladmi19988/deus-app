@@ -116,7 +116,8 @@ test('chrome shell sits in front of the iris and leaves a visible metal band aro
   assert.ok(shell.innerZ > shell.irisZ);
   assert.ok(shell.outerRadius - shell.outerTube < shell.irisRadius, 'metal must overlap the iris edge');
   assert.ok(shell.outerRadius + shell.outerTube > shell.irisRadius + 0.35, 'metal must form a broad continuous surround');
-  assert.equal(shell.innerRadius - shell.innerTube, shell.outerRadius - shell.outerTube);
+  assert.equal(shell.innerRadius, shell.outerRadius);
+  assert.equal(shell.innerTube, shell.outerTube);
   assert.ok(shell.outerTube > 0.25, 'the surround must be one broad continuous metal band');
 });
 
