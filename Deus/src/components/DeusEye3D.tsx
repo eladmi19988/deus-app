@@ -4,7 +4,7 @@ import { GLView } from 'expo-gl';
 import type { ExpoWebGLRenderingContext } from 'expo-gl';
 import * as THREE from 'three';
 import type { EyeMode } from '../lib/eyeState';
-import { getEyeMotion, getLiquidShellMotion } from '../lib/eyeAnimation';
+import { getEyeMotion, getLiquidShellMotion, getLiquidShellWave } from '../lib/eyeAnimation';
 
 type Props = { mode: EyeMode; onLook?: (x: number, y: number) => void };
 
@@ -81,9 +81,25 @@ function makeOrganicRing(radius: number, tube: number, color: string, opacity = 
   }
   geometry.computeVertexNormals();
   return new THREE.Mesh(geometry, new THREE.MeshPhysicalMaterial({
-    color, metalness: 0.92, roughness: 0.16, clearcoat: 1, clearcoatRoughness: 0.06,
+    color, metalness: 0.78, roughness: 0.12, clearcoat: 1, clearcoatRoughness: 0.035,
     transparent: opacity < 1, opacity
   }));
+}
+
+
+function deformLiquidRing(mesh: THREE.Mesh, basePositions: Float32Array, time: number, intensity: number) {
+  const positions = mesh.geometry.attributes.position as THREE.BufferAttribute;
+  for (let index = 0; index < positions.count; index++) {
+    const offset = index * 3;
+    const x = basePositions[offset];
+    const y = basePositions[offset + 1];
+    const z = basePositions[offset + 2];
+    const radius = Math.hypot(x, y) || 1;
+    const wave = getLiquidShellWave(Math.atan2(y, x), time, intensity);
+    positions.setXYZ(index, x + (x / radius) * wave.radial, y + (y / radius) * wave.radial, z + wave.depth);
+  }
+  positions.needsUpdate = true;
+  mesh.geometry.computeVertexNormals();
 }
 
 
@@ -120,15 +136,17 @@ export default function DeusEye3D({ mode, onLook }: Props) {
 
     // The reference is a floating eye: no solid eyeball, no oversized HUD.
     // The silver shell is intentionally irregular, like liquid chrome frozen mid-splash.
-    const outerShell = makeOrganicRing(1.27, 0.17, '#C9DDE0');
+    const outerShell = makeOrganicRing(1.34, 0.17, '#E4F1F2');
     outerShell.position.z = 0.02;
     root.add(outerShell);
+    const outerShellBase = new Float32Array((outerShell.geometry.attributes.position as THREE.BufferAttribute).array as Float32Array);
 
-    const shellHighlight = makeOrganicRing(1.19, 0.045, '#F4FFFF', 0.9);
+    const shellHighlight = makeOrganicRing(1.26, 0.045, '#F8FFFF', 0.92);
     shellHighlight.position.z = 0.14;
     root.add(shellHighlight);
+    const shellHighlightBase = new Float32Array((shellHighlight.geometry.attributes.position as THREE.BufferAttribute).array as Float32Array);
 
-    const innerMetal = makeOrganicRing(0.98, 0.055, '#7FAAB5', 0.96);
+    const innerMetal = makeOrganicRing(1.01, 0.055, '#A7C9CF', 0.96);
     innerMetal.position.z = 0.76;
     root.add(innerMetal);
 
@@ -242,6 +260,8 @@ export default function DeusEye3D({ mode, onLook }: Props) {
       root.scale.setScalar(0.82 * breath * liquid.shellPulse);
       root.rotation.y += ((look.current.x * 0.105 + Math.sin(frame * 0.31) * 0.024) - root.rotation.y) * 0.022;
       root.rotation.x += ((-look.current.y * 0.065 + Math.sin(frame * 0.43) * 0.016) - root.rotation.x) * 0.022;
+      deformLiquidRing(outerShell, outerShellBase, frame, liquid.splashAmount);
+      deformLiquidRing(shellHighlight, shellHighlightBase, frame * 0.86, liquid.splashAmount * 0.68);
       outerShell.rotation.z = Math.sin(frame * 0.42) * 0.025;
       shellHighlight.rotation.z = -Math.sin(frame * 0.31) * 0.032;
       innerMetal.rotation.z = Math.sin(frame * 0.24) * 0.018;
