@@ -4,7 +4,7 @@ import { GLView } from 'expo-gl';
 import type { ExpoWebGLRenderingContext } from 'expo-gl';
 import * as THREE from 'three';
 import type { EyeMode } from '../lib/eyeState';
-import { getEyeMotion, getEyeBlinkAmount, getLiquidShellMotion, getLiquidShellWave, getSplashShardMotion, getChromeShellLayout } from '../lib/eyeAnimation';
+import { getEyeMotion, getEyeBlinkAmount, getLiquidShellMotion, getLiquidShellWave, getSplashShardMotion, getChromeShellLayout, getChromeSurfaceProfile } from '../lib/eyeAnimation';
 
 type Props = { mode: EyeMode; onLook?: (x: number, y: number) => void };
 
@@ -66,41 +66,37 @@ const irisShader = {
 };
 
 function makeOrganicRing(radius: number, tube: number, color: string, opacity = 1) {
-  const geometry = new THREE.TorusGeometry(radius, tube, 28, 192);
+  const geometry = new THREE.TorusGeometry(radius, tube, 40, 256);
   const positions = geometry.attributes.position as THREE.BufferAttribute;
-  for (let i = 0; i < positions.count; i++) {
-    const x = positions.getX(i);
-    const y = positions.getY(i);
-    const z = positions.getZ(i);
-    const angle = Math.atan2(y, x);
-    const wave = Math.sin(angle * 2.0 + 0.35) * 0.105 + Math.sin(angle * 3.0 - 0.8) * 0.075;
-    const fineWave = Math.sin(angle * 5.0 + 1.2) * 0.035 + Math.sin(angle * 9.0) * 0.018;
-    const scale = 1.0 + wave + fineWave;
-    const splash = Math.pow(Math.max(0, Math.sin(angle * 5.0 + 0.7)), 8.0) * 0.11;
-    positions.setXYZ(i, x * (scale + splash), y * (scale + splash), z + Math.sin(angle * 2.0) * 0.07 + splash * 0.6);
-  }
-  // A procedural silver reflection band keeps the chrome readable even without an HDR environment map.
   const colors = new Float32Array(positions.count * 3);
   const baseColor = new THREE.Color(color);
+
   for (let i = 0; i < positions.count; i++) {
     const x = positions.getX(i);
     const y = positions.getY(i);
     const z = positions.getZ(i);
     const angle = Math.atan2(y, x);
     const crossAngle = Math.atan2(z, Math.hypot(x, y) - radius);
-    const studioStripe = Math.pow(Math.max(0, Math.cos(crossAngle - 0.58)), 18);
-    const angularShade = 0.42 + Math.sin(angle * 2.2 + 0.4) * 0.15 + Math.sin(angle * 5.3 + 1.1) * 0.09;
-    const shade = Math.max(0.13, angularShade + studioStripe * 0.88);
+    const profile = getChromeSurfaceProfile(angle, crossAngle, 0, 1);
+    const radialScale = 1 + profile.radial;
+    positions.setXYZ(i, x * radialScale, y * radialScale, z + profile.depth);
+
+    // Chrome is defined by alternating dark mirror bands and broad near-white studio reflections.
+    const angularReflection = 0.5 + 0.5 * Math.sin(angle * 2.3 + 0.55);
+    const shade = Math.max(0.08, Math.min(1.65, 0.12 + profile.reflection * 0.92 + angularReflection * 0.16));
     colors[i * 3] = baseColor.r * shade;
     colors[i * 3 + 1] = baseColor.g * shade;
     colors[i * 3 + 2] = baseColor.b * shade;
   }
+
   geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
   geometry.computeVertexNormals();
-  return new THREE.Mesh(geometry, new THREE.MeshPhysicalMaterial({
-    color: '#FFFFFF', vertexColors: true, metalness: 0.82, roughness: 0.17,
-    clearcoat: 1, clearcoatRoughness: 0.012,
-    transparent: opacity < 1, opacity
+  return new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({
+    vertexColors: true,
+    toneMapped: false,
+    transparent: opacity < 1,
+    opacity,
+    side: THREE.DoubleSide,
   }));
 }
 
@@ -113,8 +109,11 @@ function deformLiquidRing(mesh: THREE.Mesh, basePositions: Float32Array, time: n
     const y = basePositions[offset + 1];
     const z = basePositions[offset + 2];
     const radius = Math.hypot(x, y) || 1;
-    const wave = getLiquidShellWave(Math.atan2(y, x), time, intensity);
-    positions.setXYZ(index, x + (x / radius) * wave.radial, y + (y / radius) * wave.radial, z + wave.depth);
+    const angle = Math.atan2(y, x);
+    const wave = getLiquidShellWave(angle, time, intensity);
+    const profile = getChromeSurfaceProfile(angle, Math.atan2(z, radius - 1.1), time, intensity);
+    const radial = wave.radial + profile.radial * 0.24;
+    positions.setXYZ(index, x + (x / radius) * radial, y + (y / radius) * radial, z + wave.depth + profile.depth * 0.22);
   }
   positions.needsUpdate = true;
   mesh.geometry.computeVertexNormals();
@@ -124,21 +123,22 @@ function deformLiquidRing(mesh: THREE.Mesh, basePositions: Float32Array, time: n
 function makeChromeShard() {
   const profile = [
     new THREE.Vector2(0.002, -0.5),
-    new THREE.Vector2(0.026, -0.34),
-    new THREE.Vector2(0.052, -0.08),
-    new THREE.Vector2(0.043, 0.22),
-    new THREE.Vector2(0.018, 0.43),
+    new THREE.Vector2(0.035, -0.48),
+    new THREE.Vector2(0.082, -0.30),
+    new THREE.Vector2(0.112, -0.06),
+    new THREE.Vector2(0.086, 0.20),
+    new THREE.Vector2(0.042, 0.43),
     new THREE.Vector2(0.001, 0.58),
   ];
   const geometry = new THREE.LatheGeometry(profile, 20);
   return new THREE.Mesh(geometry, new THREE.MeshPhysicalMaterial({
-    color: '#DDFBFF',
-    metalness: 0.38,
-    roughness: 0.075,
+    color: '#EAFBFF',
+    metalness: 0.22,
+    roughness: 0.045,
     clearcoat: 1,
     clearcoatRoughness: 0.012,
-    emissive: '#477D89',
-    emissiveIntensity: 0.12,
+    emissive: '#9CCBD4',
+    emissiveIntensity: 0.34,
   }));
 }
 
@@ -151,11 +151,12 @@ function makeChromeReflectionArc(angle: number, radius: number, length: number, 
     points.push(new THREE.Vector3(Math.cos(a) * r, Math.sin(a) * r, z + Math.cos(t * Math.PI * 2) * 0.018));
   }
   const curve = new THREE.CatmullRomCurve3(points);
-  const geometry = new THREE.TubeGeometry(curve, 24, 0.014, 8, false);
+  const geometry = new THREE.TubeGeometry(curve, 32, 0.026, 10, false);
   const material = new THREE.MeshBasicMaterial({
-    color: '#E9FFFF',
+    color: '#FFFFFF',
     transparent: true,
-    opacity: 0.82,
+    opacity: 0.96,
+    toneMapped: false,
   });
   return new THREE.Mesh(geometry, material);
 }
@@ -221,8 +222,8 @@ export default function DeusEye3D({ mode, onLook }: Props) {
 
     // Narrow specular streaks fake a moving studio reflection across the chrome.
     const reflectionArcs: THREE.Mesh[] = [];
-    for (let i = 0; i < 7; i++) {
-      const arc = makeChromeReflectionArc(i * (Math.PI * 2 / 7) + 0.18, chromeLayout.outerRadius + 0.13, 0.24 + (i % 3) * 0.1, 1.27 + (i % 2) * 0.035);
+    for (let i = 0; i < 9; i++) {
+      const arc = makeChromeReflectionArc(i * (Math.PI * 2 / 7) + 0.18, chromeLayout.outerRadius + 0.12, 0.32 + (i % 3) * 0.13, 1.29 + (i % 2) * 0.035);
       root.add(arc);
       reflectionArcs.push(arc);
     }
@@ -302,9 +303,9 @@ export default function DeusEye3D({ mode, onLook }: Props) {
     root.add(blinkSeam);
 
     const lights = [
-      new THREE.PointLight('#F1FFFF', 9.0, 18),
-      new THREE.PointLight('#238FC0', 4.2, 13),
-      new THREE.PointLight('#D5B36B', 2.0, 10),
+      new THREE.PointLight('#FFFFFF', 14.0, 18),
+      new THREE.PointLight('#8EDFFF', 6.5, 13),
+      new THREE.PointLight('#E8F2FF', 3.2, 10),
       new THREE.PointLight('#78E8D9', 1.7, 8)
     ];
     lights[0].position.set(-2.4, 2.8, 5.4);
@@ -312,7 +313,7 @@ export default function DeusEye3D({ mode, onLook }: Props) {
     lights[2].position.set(-0.2, 2.3, -1.5);
     lights[3].position.set(2.5, 1.4, 3.4);
     lights.forEach(light => scene.add(light));
-    scene.add(new THREE.AmbientLight('#C5E5E8', 1.3));
+    scene.add(new THREE.AmbientLight('#E8F7FA', 1.8));
 
     const particles = new THREE.Group();
     scene.add(particles);
@@ -388,8 +389,8 @@ export default function DeusEye3D({ mode, onLook }: Props) {
         shard.scale.set(0.72 * motion.width, motion.stretch, 0.72 * motion.width);
       });
       reflectionArcs.forEach((arc, index) => {
-        const material = arc.material as THREE.MeshPhysicalMaterial;
-        material.opacity = 0.52 + (Math.sin(frame * 0.9 + index * 1.7) + 1) * 0.18;
+        const material = arc.material as THREE.MeshBasicMaterial;
+        material.opacity = 0.76 + (Math.sin(frame * 0.9 + index * 1.7) + 1) * 0.12;
         arc.rotation.z = Math.sin(frame * 0.24 + index) * 0.012;
       });
       particles.rotation.z = Math.sin(frame * 0.14) * 0.025;
