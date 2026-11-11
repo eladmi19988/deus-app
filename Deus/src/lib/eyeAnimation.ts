@@ -90,13 +90,14 @@ export type LiquidShellWave = {
 /** Deterministic vertex displacement for a continuously moving liquid-chrome rim. */
 export function getLiquidShellWave(angle: number, time: number, intensity: number): LiquidShellWave {
   const strength = Math.max(0, Math.min(1.8, intensity));
-  const broadWave = Math.sin(angle * 2.0 + time * 0.82) * 0.032;
-  const rollingWave = Math.sin(angle * 5.0 - time * 1.17 + 0.7) * 0.022;
-  const fineWave = Math.sin(angle * 9.0 + time * 1.63) * 0.009;
-  const splash = Math.pow(Math.max(0, Math.sin(angle * 4.0 + time * 0.94)), 9.0) * 0.075;
-  const depthWave = Math.sin(angle * 3.0 + time * 1.08) * 0.026;
+  const asymmetry = Math.sin(angle * 2.0 + time * 0.37) * 0.62;
+  const broadWave = Math.sin(angle * 2.0 + time * 0.82) * 0.021;
+  const rollingWave = Math.sin(angle * 3.0 - time * 1.13 + 0.7) * 0.017;
+  const fineWave = Math.sin(angle * 8.0 + time * 1.63) * 0.011;
+  const splash = Math.pow(Math.max(0, Math.sin(angle * 5.0 + asymmetry + time * 0.94)), 8.0) * 0.105;
+  const depthWave = Math.sin(angle * 3.0 + time * 1.08) * 0.022;
   return {
     radial: (broadWave + rollingWave + fineWave + splash) * strength,
-    depth: (depthWave + splash * 0.52) * strength,
+    depth: (depthWave + splash * 0.58) * strength,
   };
 }
