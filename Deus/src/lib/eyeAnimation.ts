@@ -101,3 +101,28 @@ export function getLiquidShellWave(angle: number, time: number, intensity: numbe
     depth: (depthWave + splash * 0.58) * strength,
   };
 }
+
+export type SplashShardMotion = {
+  radial: number;
+  tangent: number;
+  depth: number;
+  stretch: number;
+  width: number;
+  twist: number;
+};
+
+/** Asymmetric, elongated motion for chrome fragments breaking away from the eye rim. */
+export function getSplashShardMotion(angle: number, time: number, index: number, intensity: number): SplashShardMotion {
+  const strength = Math.max(0.25, Math.min(1.8, intensity));
+  const phase = index * 1.731;
+  const pulse = 0.5 + 0.5 * Math.sin(time * (0.72 + (index % 4) * 0.09) + phase);
+  const directional = Math.sin(angle * 2.0 + time * 0.31 + phase * 0.2);
+  return {
+    radial: 1.34 + (index % 4) * 0.105 + pulse * 0.105 * strength + directional * 0.045,
+    tangent: Math.sin(time * 0.83 + phase) * 0.095 * strength,
+    depth: 0.08 + Math.sin(time * 1.12 + phase) * 0.19 * strength,
+    stretch: 1.45 + (index % 3) * 0.42 + pulse * 0.36 * strength,
+    width: 0.72 + (index % 2) * 0.16 + pulse * 0.08,
+    twist: Math.sin(time * 0.66 + phase) * 0.24,
+  };
+}
