@@ -183,10 +183,12 @@ export type ChromeShellLayout = {
   shellEndPolar: number;
 };
 
+const CHROME_SHELL_RADIUS = 1.12;
+const CHROME_SHELL_APERTURE_RADIUS = 0.76;
+const CHROME_SHELL_START_POLAR = Math.asin(CHROME_SHELL_APERTURE_RADIUS / CHROME_SHELL_RADIUS);
+
 /** A single spherical chrome skin wraps around the eyeball and leaves only a tight iris aperture. */
 export function getChromeShellLayout(): ChromeShellLayout {
-  const shellRadius = 1.12;
-  const shellApertureRadius = 0.76;
   return {
     eyeRadius: 0.92,
     eyeCenterZ: 0,
@@ -194,9 +196,9 @@ export function getChromeShellLayout(): ChromeShellLayout {
     irisZ: 0.94,
     pupilRadius: 0.29,
     pupilZ: 0.99,
-    shellRadius,
-    shellApertureRadius,
-    shellStartPolar: Math.asin(shellApertureRadius / shellRadius),
+    shellRadius: CHROME_SHELL_RADIUS,
+    shellApertureRadius: CHROME_SHELL_APERTURE_RADIUS,
+    shellStartPolar: CHROME_SHELL_START_POLAR,
     shellEndPolar: Math.PI - 0.025,
   };
 }
@@ -208,11 +210,10 @@ export function getWrappedChromeShellPoint(
   time: number,
   intensity: number,
 ): { x: number; y: number; z: number } {
-  const layout = getChromeShellLayout();
   const profile = getChromeSurfaceProfile(angle, Math.PI / 2 - polarAngle, time, intensity);
   const wave = getLiquidShellWave(angle, time, intensity);
-  const apertureLip = -Math.exp(-Math.pow((polarAngle - layout.shellStartPolar) / 0.085, 2)) * 0.006;
-  const radius = layout.shellRadius + profile.radial * 0.025 + wave.radial * 0.045 + apertureLip;
+  const apertureLip = -Math.exp(-Math.pow((polarAngle - CHROME_SHELL_START_POLAR) / 0.085, 2)) * 0.006;
+  const radius = CHROME_SHELL_RADIUS + profile.radial * 0.025 + wave.radial * 0.045 + apertureLip;
   const depth = profile.depth * 0.018 + wave.depth * 0.04;
   const sinPolar = Math.sin(polarAngle);
   return {
