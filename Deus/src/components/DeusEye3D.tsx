@@ -4,7 +4,7 @@ import { GLView } from 'expo-gl';
 import type { ExpoWebGLRenderingContext } from 'expo-gl';
 import * as THREE from 'three';
 import type { EyeMode } from '../lib/eyeState';
-import { getEyeMotion, getEyeBlinkAmount, getLiquidShellMotion, getLiquidShellWave, getSplashShardMotion, getChromeShellLayout, getChromeSurfaceProfile } from '../lib/eyeAnimation';
+import { getEyeMotion, getEyeBlinkAmount, getLiquidShellMotion, getLiquidShellWave, getSplashShardMotion, getChromeShellLayout, getChromeSurfaceProfile, getWrappedChromeShellPoint } from '../lib/eyeAnimation';
 
 type Props = { mode: EyeMode; onLook?: (x: number, y: number) => void };
 
@@ -65,55 +65,89 @@ const irisShader = {
   `
 };
 
-function makeOrganicRing(radius: number, tube: number, color: string, opacity = 1) {
-  const geometry = new THREE.TorusGeometry(radius, tube, 40, 256);
+function addChromeVertexColors(geometry: THREE.BufferGeometry) {
   const positions = geometry.attributes.position as THREE.BufferAttribute;
   const colors = new Float32Array(positions.count * 3);
-  const baseColor = new THREE.Color(color);
+  const baseColor = new THREE.Color('#D4DEE1');
 
   for (let i = 0; i < positions.count; i++) {
     const x = positions.getX(i);
     const y = positions.getY(i);
     const z = positions.getZ(i);
+    const radius = Math.hypot(x, y, z) || 1;
     const angle = Math.atan2(y, x);
-    const crossAngle = Math.atan2(z, Math.hypot(x, y) - radius);
-    const profile = getChromeSurfaceProfile(angle, crossAngle, 0, 1);
-    const radialScale = 1 + profile.radial;
-    positions.setXYZ(i, x * radialScale, y * radialScale, z + profile.depth);
-
-    // Chrome is defined by alternating dark mirror bands and broad near-white studio reflections.
+    const polar = Math.acos(THREE.MathUtils.clamp(z / radius, -1, 1));
+    const profile = getChromeSurfaceProfile(angle, Math.PI / 2 - polar, 0, 1);
     const angularReflection = 0.5 + 0.5 * Math.sin(angle * 2.3 + 0.55);
-    const shade = Math.max(0.08, Math.min(1.65, 0.12 + profile.reflection * 0.92 + angularReflection * 0.16));
+    const shade = THREE.MathUtils.clamp(0.12 + profile.reflection * 0.92 + angularReflection * 0.16, 0.08, 1.65);
     colors[i * 3] = baseColor.r * shade;
     colors[i * 3 + 1] = baseColor.g * shade;
     colors[i * 3 + 2] = baseColor.b * shade;
   }
 
   geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-  geometry.computeVertexNormals();
-  return new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({
-    vertexColors: true,
-    toneMapped: false,
-    transparent: opacity < 1,
-    opacity,
-    side: THREE.DoubleSide,
-  }));
 }
 
+function makeChromeMaterial() {
+  return new THREE.MeshPhysicalMaterial({
+    color: '#FFFFFF',
+    metalness: 0.82,
+    roughness: 0.16,
+    clearcoat: 1,
+    clearcoatRoughness: 0.045,
+    vertexColors: true,
+    toneMapped: false,
+    side: THREE.DoubleSide,
+    emissive: '#111C22',
+    emissiveIntensity: 0.08,
+  });
+}
 
-function deformLiquidRing(mesh: THREE.Mesh, basePositions: Float32Array, time: number, intensity: number) {
+/** One continuous spherical skin: it begins at the iris aperture and wraps around the eye to its back. */
+function makeWrappedChromeShell(layout: ReturnType<typeof getChromeShellLayout>, material: THREE.Material) {
+  const azimuthSegments = 192;
+  const polarSegments = 64;
+  const rowLength = azimuthSegments + 1;
+  const positions: number[] = [];
+  const indices: number[] = [];
+
+  for (let row = 0; row <= polarSegments; row++) {
+    const polar = THREE.MathUtils.lerp(layout.shellStartPolar, layout.shellEndPolar, row / polarSegments);
+    for (let column = 0; column <= azimuthSegments; column++) {
+      const angle = (column / azimuthSegments) * Math.PI * 2;
+      const point = getWrappedChromeShellPoint(angle, polar, 0, 1);
+      positions.push(point.x, point.y, point.z);
+    }
+  }
+
+  for (let row = 0; row < polarSegments; row++) {
+    for (let column = 0; column < azimuthSegments; column++) {
+      const a = row * rowLength + column;
+      const b = a + rowLength;
+      indices.push(a, b, a + 1, b, b + 1, a + 1);
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setIndex(indices);
+  addChromeVertexColors(geometry);
+  geometry.computeVertexNormals();
+  return new THREE.Mesh(geometry, material);
+}
+
+function deformWrappedChromeShell(mesh: THREE.Mesh, basePositions: Float32Array, time: number, intensity: number) {
   const positions = mesh.geometry.attributes.position as THREE.BufferAttribute;
   for (let index = 0; index < positions.count; index++) {
     const offset = index * 3;
     const x = basePositions[offset];
     const y = basePositions[offset + 1];
     const z = basePositions[offset + 2];
-    const radius = Math.hypot(x, y) || 1;
+    const radius = Math.hypot(x, y, z) || 1;
     const angle = Math.atan2(y, x);
-    const wave = getLiquidShellWave(angle, time, intensity);
-    const profile = getChromeSurfaceProfile(angle, Math.atan2(z, radius - 1.1), time, intensity);
-    const radial = wave.radial + profile.radial * 0.24;
-    positions.setXYZ(index, x + (x / radius) * radial, y + (y / radius) * radial, z + wave.depth + profile.depth * 0.22);
+    const polar = Math.acos(THREE.MathUtils.clamp(z / radius, -1, 1));
+    const point = getWrappedChromeShellPoint(angle, polar, time, intensity);
+    positions.setXYZ(index, point.x, point.y, point.z);
   }
   positions.needsUpdate = true;
   mesh.geometry.computeVertexNormals();
@@ -173,12 +207,25 @@ export default function DeusEye3D({ mode, onLook }: Props) {
     const root = new THREE.Group();
     scene.add(root);
 
-    // Sculpted foreground chrome: a broad silver shell, a bright outer lip and an inner bevel.
+    // One continuous chrome skin wraps the centered eyeball, leaving only the iris opening exposed.
     const chromeLayout = getChromeShellLayout();
-    const outerShell = makeOrganicRing(chromeLayout.outerRadius, chromeLayout.outerTube, '#D4DEE1');
-    outerShell.position.z = chromeLayout.outerZ;
+    const chromeMaterial = makeChromeMaterial();
+    const outerShell = makeWrappedChromeShell(chromeLayout, chromeMaterial);
     root.add(outerShell);
     const outerShellBase = new Float32Array((outerShell.geometry.attributes.position as THREE.BufferAttribute).array as Float32Array);
+
+    const eyeBall = new THREE.Mesh(
+      new THREE.SphereGeometry(chromeLayout.eyeRadius, 96, 64),
+      new THREE.MeshPhysicalMaterial({
+        color: '#07151E',
+        metalness: 0.18,
+        roughness: 0.26,
+        clearcoat: 0.9,
+        clearcoatRoughness: 0.08,
+      })
+    );
+    eyeBall.position.z = chromeLayout.eyeCenterZ;
+    root.add(eyeBall);
 
     // Broken liquid-chrome splinters: elongated, tapered and individually animated.
     const droplets: THREE.Mesh[] = [];
@@ -194,7 +241,7 @@ export default function DeusEye3D({ mode, onLook }: Props) {
 
     const irisUniforms = { uTime: { value: 0 }, uGlow: { value: 0.58 } };
     const iris = new THREE.Mesh(
-      new THREE.CircleGeometry(0.78, 160),
+      new THREE.CircleGeometry(chromeLayout.irisRadius, 160),
       new THREE.ShaderMaterial({
         vertexShader: irisShader.vertexShader,
         fragmentShader: irisShader.fragmentShader,
@@ -202,50 +249,44 @@ export default function DeusEye3D({ mode, onLook }: Props) {
         side: THREE.DoubleSide
       })
     );
-    iris.position.set(0, 0, 0.94);
+    iris.position.set(0, 0, chromeLayout.irisZ);
     root.add(iris);
 
     const irisRim = new THREE.Mesh(
-      new THREE.TorusGeometry(0.795, 0.035, 20, 160),
+      new THREE.TorusGeometry(chromeLayout.irisRadius + 0.015, 0.03, 20, 160),
       new THREE.MeshPhysicalMaterial({ color: '#9AC6CB', metalness: 0.9, roughness: 0.13, clearcoat: 1 })
     );
-    irisRim.position.z = 0.965;
+    irisRim.position.z = chromeLayout.irisZ + 0.012;
     root.add(irisRim);
 
     const pupil = new THREE.Mesh(
-      new THREE.SphereGeometry(0.29, 64, 48),
+      new THREE.SphereGeometry(chromeLayout.pupilRadius, 64, 48),
       new THREE.MeshPhysicalMaterial({ color: '#010207', roughness: 0.035, metalness: 0.12, clearcoat: 1, clearcoatRoughness: 0.015 })
     );
-    pupil.position.set(0, 0, 1.06);
+    pupil.position.set(0, 0, chromeLayout.pupilZ);
     pupil.scale.set(1.04, 1.04, 0.28);
     root.add(pupil);
 
     const pupilRing = new THREE.Mesh(
-      new THREE.TorusGeometry(0.315, 0.014, 12, 96),
+      new THREE.TorusGeometry(chromeLayout.pupilRadius + 0.025, 0.014, 12, 96),
       new THREE.MeshStandardMaterial({ color: '#D8F6F4', metalness: 0.94, roughness: 0.12 })
     );
-    pupilRing.position.z = 1.09;
+    pupilRing.position.z = chromeLayout.pupilZ + 0.03;
     root.add(pupilRing);
 
-    // Chrome eyelids sweep over the iris from top and bottom during a natural blink.
-    const upperBlinkLid = new THREE.Mesh(
-      new THREE.SphereGeometry(0.82, 64, 32, 0, Math.PI * 2, 0, Math.PI / 2),
-      new THREE.MeshBasicMaterial({
-        color: '#D4DEE1',
-        toneMapped: false,
-        side: THREE.DoubleSide,
-      })
-    );
+    // Blink lids share the exact chrome material used by the surrounding shell.
+    const upperLidGeometry = new THREE.SphereGeometry(chromeLayout.irisRadius + 0.04, 64, 32, 0, Math.PI * 2, 0, Math.PI / 2);
+    const lowerLidGeometry = new THREE.SphereGeometry(chromeLayout.irisRadius + 0.04, 64, 32, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2);
+    addChromeVertexColors(upperLidGeometry);
+    addChromeVertexColors(lowerLidGeometry);
+    const upperBlinkLid = new THREE.Mesh(upperLidGeometry, chromeMaterial);
     upperBlinkLid.scale.set(1.04, 1.04, 0.16);
-    upperBlinkLid.position.set(0, 0.84, 1.23);
+    upperBlinkLid.position.set(0, chromeLayout.irisRadius + 0.06, chromeLayout.pupilZ + 0.08);
     root.add(upperBlinkLid);
 
-    const lowerBlinkLid = new THREE.Mesh(
-      new THREE.SphereGeometry(0.82, 64, 32, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2),
-      (upperBlinkLid.material as THREE.MeshPhysicalMaterial).clone()
-    );
+    const lowerBlinkLid = new THREE.Mesh(lowerLidGeometry, chromeMaterial);
     lowerBlinkLid.scale.set(1.04, 1.04, 0.16);
-    lowerBlinkLid.position.set(0, -0.84, 1.23);
+    lowerBlinkLid.position.set(0, -(chromeLayout.irisRadius + 0.06), chromeLayout.pupilZ + 0.08);
     root.add(lowerBlinkLid);
 
     const lights = [
@@ -286,16 +327,14 @@ export default function DeusEye3D({ mode, onLook }: Props) {
       const liquid = getLiquidShellMotion(modeRef.current, frame);
       const blink = getEyeBlinkAmount(frame);
       // The pupil is deliberately anchored to the iris center; only the whole eye may orient.
-      pupil.position.set(0, 0, 1.06);
-      pupilRing.position.set(0, 0, 1.09);
+      pupil.position.set(0, 0, chromeLayout.pupilZ);
+      pupilRing.position.set(0, 0, chromeLayout.pupilZ + 0.03);
 
-      const lidOffset = 0.84 * (1 - blink);
+      const lidOffset = (chromeLayout.irisRadius + 0.06) * (1 - blink);
       upperBlinkLid.position.y = lidOffset;
       lowerBlinkLid.position.y = -lidOffset;
       upperBlinkLid.visible = blink > 0.008;
       lowerBlinkLid.visible = blink > 0.008;
-      iris.scale.set(motion.pulse, motion.pulse, 1);
-      irisRim.scale.set(motion.pulse, motion.pulse, 1);
       pupil.scale.set(1.04, 1.04, 0.28);
       pupilRing.scale.setScalar(1);
       irisUniforms.uTime.value = frame * motion.scanSpeed;
@@ -304,8 +343,7 @@ export default function DeusEye3D({ mode, onLook }: Props) {
       root.scale.setScalar(0.82 * breath * liquid.shellPulse);
       root.rotation.y += ((look.current.x * 0.105 + Math.sin(frame * 0.31) * 0.024) - root.rotation.y) * 0.022;
       root.rotation.x += ((-look.current.y * 0.065 + Math.sin(frame * 0.43) * 0.016) - root.rotation.x) * 0.022;
-      deformLiquidRing(outerShell, outerShellBase, frame, liquid.splashAmount);
-      outerShell.rotation.z = Math.sin(frame * 0.42) * 0.012;
+      deformWrappedChromeShell(outerShell, outerShellBase, frame, liquid.splashAmount);
       droplets.forEach((shard, index) => {
         const seed = dropletSeeds[index];
         const motion = getSplashShardMotion(seed.angle, frame, seed.index, liquid.splashAmount);
